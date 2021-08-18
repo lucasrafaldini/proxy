@@ -11,7 +11,7 @@ services:
     command: ["./scripts/wait-for-it.sh", "db:5432", "--", "python", "manage.py", "runserver", "0:8000"]
     environment:
       <<: *common_env
-      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      ALLOWED_HOSTS: localhost
       BASE_TARGET_URL: ${BASE_TARGET_URL}
     env_file:
       - .env

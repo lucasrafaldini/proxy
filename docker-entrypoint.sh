@@ -4,4 +4,4 @@
 
 /opt/proxy/manage.py migrate
 
-python /opt/proxy/manage.py runserver 0:8000
+/opt/proxy/manage.py runserver 0:8000
