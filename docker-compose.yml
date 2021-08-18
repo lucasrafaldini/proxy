@@ -1,0 +1,46 @@
+version: "3.9"
+
+x-common_dev: &common_env
+  PYTHONUNBUFFERED: 1
+  DATABASE_URI: ${DATABASE_URI}
+
+services:
+  proxy-api:
+    container_name: proxy-api
+    build: .
+    command: ["./scripts/wait-for-it.sh", "db:5432", "--", "python", "manage.py", "runserver", "0:8000"]
+    environment:
+      <<: *common_env
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS}
+      BASE_TARGET_URL: ${BASE_TARGET_URL}
+    env_file:
+      - .env
+    depends_on:
+      - db
+    links:
+      - db:db
+    volumes:
+      - ./:/opt/proxy
+    ports:
+      - "8000:8000"
+    networks:
+      - proxy-network
+
+  db:
+    container_name: db
+    image: postgres
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    networks:
+      - proxy-network
+
+networks:
+  proxy-network:
+    driver: bridge
+  

@@ -1,0 +1,9 @@
+__pycache__
+.coverage
+.git/
+.tox
+.venv
+*.egg-info
+*.egg/
+*.pyc
+*.swp
