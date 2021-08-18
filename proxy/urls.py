@@ -1,9 +1,8 @@
 
 from django.contrib import admin
-from django.urls import path
-from . import views
+from django.urls import re_path
+from middleman.views import ProxyView
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('', views.proxy_view, name='proxy')
+    re_path(r'^(?P<path>\w+)/$', ProxyView.as_view(), name='proxy')
 ]
