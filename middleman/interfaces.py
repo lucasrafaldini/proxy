@@ -1,7 +1,10 @@
-from django.db.models.query import QuerySet
-from .models import AccessEntry
 import logging
 
+from django.db.models.query import QuerySet
+
+from middleman.serializers import AccessEntrySerializer
+
+from .models import AccessEntry
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +50,13 @@ class RegistryInterface:
     ) -> AccessEntry or AccessEntry.DoesNotExist:
         """Update the max requests of an access entry"""
         try:
-            return self.model.objects.update(max_requests=max_requests)
+            target_obj = self.model.objects.get(key=key)
+            serializer_class = AccessEntrySerializer(
+                target_obj, data={"max_requests": max_requests}, partial=True
+            )
+            if serializer_class.is_valid():
+                serializer_class.save()
+            return serializer_class
         except AccessEntry.DoesNotExist:
             logger.exception("Access entry does not exist")
             raise AccessEntry.DoesNotExist
@@ -57,7 +66,13 @@ class RegistryInterface:
     ) -> AccessEntry or AccessEntry.DoesNotExist:
         """Reset the already requested flag of an access entry"""
         try:
-            return self.model.objects.update(already_requested=0)
+            target_obj = self.model.objects.get(key=key)
+            serializer_class = AccessEntrySerializer(
+                target_obj, data={"already_requested": 0}, partial=True
+            )
+            if serializer_class.is_valid():
+                serializer_class.save()
+            return serializer_class
         except AccessEntry.DoesNotExist:
             logger.exception("Access entry does not exist")
             raise AccessEntry.DoesNotExist

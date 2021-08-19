@@ -1,15 +1,15 @@
-import requests
-from requests.models import Request, Response
 import logging
+
+import requests
 from django.db import transaction
-from .interfaces import RegistryInterface
-from .exceptions import (
-    ServerNotRespondingException,
-    ExceededRequestsLimitException,
-    AccessNotRegisteredException,
-)
+from requests.models import Request, Response
+
 from middleman.models import AccessEntry
 
+from .exceptions import (AccessNotRegisteredException,
+                         ExceededRequestsLimitException,
+                         ServerNotRespondingException)
+from .interfaces import RegistryInterface
 
 logger = logging.getLogger(__name__)
 
