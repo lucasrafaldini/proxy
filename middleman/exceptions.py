@@ -1,7 +1,7 @@
 
 
 
-class ServerNotRespondingException(Exception):
+class ServerNotRespondingException(BaseException):
     """
     Exception raised when the requested server is not responding.
     """
@@ -11,7 +11,7 @@ class ServerNotRespondingException(Exception):
     def __str__(self):
         return "Url '%s' is not responding." % self.url
 
-class ExceededRequestsLimitException(Exception):
+class ExceededRequestsLimitException(BaseException):
     """
     Exception raised when the number of requests has exceeded the
     allowed limit.
@@ -23,7 +23,7 @@ class ExceededRequestsLimitException(Exception):
     def __str__(self):
         return "Address {} has exceeded the allowed requests limit for path {}".format(self.ip, self.path)
 
-class AccessNotRegisteredException(Exception):
+class AccessNotRegisteredException(BaseException):
     """
     Exception raised when the request is not registered.
     """

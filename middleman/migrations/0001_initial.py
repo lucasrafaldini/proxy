@@ -18,7 +18,6 @@ class Migration(migrations.Migration):
                 ('key', models.CharField(max_length=20, unique=True)),
                 ('ip', models.CharField(max_length=45)),
                 ('path', models.CharField(max_length=255)),
-                ('request', models.JSONField(null=True)),
                 ('already_requested', models.IntegerField(default=0)),
                 ('max_requests', models.IntegerField(default=100)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),

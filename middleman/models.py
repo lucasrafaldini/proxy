@@ -10,10 +10,9 @@ class AccessEntry(models.Model):
         db_table = 'middleman_access_entry'
         ordering = ['ip']
 
-    key= models.CharField(max_length=255, unique=True)
+    key= models.CharField(max_length=20, unique=True)
     ip = models.CharField(max_length=45)
     path = models.CharField(max_length=255)
-    request = models.JSONField(null=True)
     already_requested = models.IntegerField(default=0)
     max_requests = models.IntegerField(default=100)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -22,4 +21,4 @@ class AccessEntry(models.Model):
         return self.name
     
     def __repr__(self):
-        return "Access from {} to {} at {}".format(self.ip, self.path, self.accessed_at)
+        return "Access from {} to {} at {}".format(self.ip, self.path, self.created_at)

@@ -20,9 +20,9 @@ if os.getenv('LOGLEVEL') == 'DEBUG':
 
 LOGLEVEL = os.environ.get('LOGLEVEL', 'warning').upper()
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', ['*'])
 
-BASE_TARGET_URL = os.environ.get('BASE_TARGET_URL', 'http://localhost:8000')
+BASE_TARGET_URL = os.environ.get('BASE_TARGET_URL', 'http://localhost:8000/')
 
 
 # Application definition
@@ -75,10 +75,10 @@ WSGI_APPLICATION = 'proxy.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('POSTGRES_DB', 'postgres'),
-        'USER': os.getenv('POSTGRES_USER', 'postgres'),
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'postgres'),
-        'HOST': 'db',
+        'HOST': os.getenv('POSTGRES_HOST', 'db-test'),
+        'NAME': os.getenv('POSTGRES_DB', 'db-test'),
+        'USER': os.getenv('POSTGRES_USER', 'proxy-test'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'proxy-test12345'),
         'PORT': 5432,
     }
 }
