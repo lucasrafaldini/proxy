@@ -1,16 +1,17 @@
 from django.db import models
 
+
 class AccessEntry(models.Model):
     """
     A single access entry.
     """
 
     class Meta:
-        app_label = 'middleman'
-        db_table = 'middleman_access_entry'
-        ordering = ['ip']
+        app_label = "middleman"
+        db_table = "middleman_access_entry"
+        ordering = ["ip"]
 
-    key= models.CharField(max_length=20, unique=True)
+    key = models.CharField(max_length=20, unique=True)
     ip = models.CharField(max_length=45)
     path = models.CharField(max_length=255)
     already_requested = models.IntegerField(default=0)
@@ -19,6 +20,6 @@ class AccessEntry(models.Model):
 
     def __str__(self):
         return self.name
-    
+
     def __repr__(self):
         return "Access from {} to {} at {}".format(self.ip, self.path, self.created_at)
