@@ -1,5 +1,5 @@
-from unittest.mock import Mock
 import json
+from unittest.mock import Mock
 
 
 def mock_api_requests(status_code):

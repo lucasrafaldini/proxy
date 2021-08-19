@@ -1,13 +1,15 @@
+import unittest
 from unittest.mock import patch
 
-from middleman.services import ProxyManager
-from proxy.settings import BASE_TARGET_URL
-from middleman.tests.utils.factories.access_entry import AccessEntryModelFactory
-from middleman.tests.utils.mocked_requests import mock_api_requests
-from middleman.exceptions import ExceededRequestsLimitException
-from django.test.client import RequestFactory
-import unittest
 import pytest
+from django.test.client import RequestFactory
+
+from middleman.exceptions import ExceededRequestsLimitException
+from middleman.services import ProxyManager
+from middleman.tests.utils.factories.access_entry import \
+    AccessEntryModelFactory
+from middleman.tests.utils.mocked_requests import mock_api_requests
+from proxy.settings import BASE_TARGET_URL
 
 
 class test_proxy_manager(unittest.TestCase):

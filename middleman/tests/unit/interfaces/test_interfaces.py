@@ -1,8 +1,11 @@
-from middleman.tests.utils.factories.access_entry import AccessEntryModelFactory
+import unittest
+
+import pytest
+
 from middleman.interfaces import RegistryInterface
 from middleman.models import AccessEntry
-import unittest
-import pytest
+from middleman.tests.utils.factories.access_entry import \
+    AccessEntryModelFactory
 
 
 class test_interfaces(unittest.TestCase):

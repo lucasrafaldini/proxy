@@ -1,9 +1,9 @@
+import random
 from typing import List
 
+import factory
 from django.utils import timezone
 
-import factory
-import random
 from middleman.models import AccessEntry
 
 

@@ -14,7 +14,7 @@ services:
     command: ["./scripts/wait-for-it.sh", "db-test:5432", "--", "python", "manage.py", "runserver", "0:8000"]
     environment:
       <<: *common_env
-      ALLOWED_HOSTS: localhost
+      BASE_TARGET_URL: https://httpstatuses.com/
     depends_on:
       - db-test
     links:
