@@ -1,0 +1,22 @@
+FROM python:3
+
+WORKDIR /opt/proxy
+ENV WORKDIR=/opt/proxy
+ENV PYTHONPATH=/opt/proxy:$PYTHONPATH
+ENV PYTHONUNBUFFERED 1
+
+# Copy project
+COPY . /opt/proxy
+
+# Copy requirements
+COPY requirements.txt /tmp/
+COPY test_requirements.txt /tmp/
+
+# Install requirements
+RUN pip install -r /tmp/test_requirements.txt
+
+# Copy entrypoint
+COPY docker-entrypoint-test.sh /opt/
+RUN ["chmod", "+x", "/opt/docker-entrypoint-test.sh"]
+
+ENTRYPOINT ["/opt/docker-entrypoint-test.sh"]

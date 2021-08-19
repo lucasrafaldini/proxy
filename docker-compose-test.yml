@@ -1,0 +1,46 @@
+version: "3.9"
+
+x-common_env: &common_env
+  PYTHONUNBUFFERED: 1
+  LOGLEVEL: DEBUG
+  DATABASE_URI: postgres://postgres:postgres@127.0.0.1/postgres
+
+services:
+  proxy-api-test:
+    container_name: proxy-api-test
+    build:
+      context: .
+      dockerfile: Dockerfile-test
+    command: ["./scripts/wait-for-it.sh", "db-test:5432", "--", "python", "manage.py", "runserver", "0:8000"]
+    environment:
+      <<: *common_env
+      ALLOWED_HOSTS: localhost
+    depends_on:
+      - db-test
+    links:
+      - db-test:db-test
+    volumes:
+      - type: bind
+        source: ./
+        target: /opt/proxy/
+    networks:
+      - proxy-test-network
+
+  db-test:
+    container_name: db-test
+    image: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: db-test
+      POSTGRES_USER: proxy-test
+      POSTGRES_PASSWORD: proxy-test12345
+      
+    networks:
+      - proxy-test-network
+
+networks:
+  proxy-test-network:
+    driver: bridge
+  
+
