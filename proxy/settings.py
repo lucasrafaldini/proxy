@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+
 import dj_database_url
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -24,7 +25,6 @@ LOGLEVEL = os.environ.get("LOGLEVEL", "warning").upper()
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", ["*"])
 
 BASE_TARGET_URL = os.environ.get("BASE_TARGET_URL", "http://localhost:8000/")
-
 
 # Application definition
 
@@ -84,6 +84,11 @@ DATABASES = {
     }
 }
 
+
+REST_FRAMEWORK = {
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 10,
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/3.2/ref/settings/#auth-password-validators

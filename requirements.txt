@@ -7,6 +7,7 @@ Django==3.2.6
 djangorestframework==3.12.4
 idna==3.2
 iniconfig==1.1.1
+isort==5.9.3
 jedi==0.18.0
 packaging==21.0
 parso==0.8.2
