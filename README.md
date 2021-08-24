@@ -134,7 +134,9 @@ $ make format
 - [ ] Also get UserAgent info and make it a filtering criterium;
 - [ ] Add a Postman/Insomnia collection to be avaiable for testing;
 - [ ] Implement a way to make a blacklist of paths and IPs to avoid;
-- [ ] Implement a  stress test with around 50k requests per second in each endpoint;
+- [ ] Implement a  stress test with around 50k requests per second in each endpoint (maybe use [Locust](https://locust.io/));
+- [ ] Add AsyncIO + cache to make 50k requests/s charge possible;
+- [ ] Implement multithreads and multiprocessing to make 50k requests/s charge possible;
 
 ---
 
