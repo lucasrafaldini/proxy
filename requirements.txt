@@ -14,7 +14,7 @@ parso==0.8.2
 pluggy==0.13.1
 psycopg2-binary>=2.8
 pudb==2021.1
-py==1.10.0
+py==1.11.0
 Pygments==2.15.0
 pyparsing==2.4.7
 python-dateutil==2.8.2
