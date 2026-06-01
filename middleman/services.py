@@ -14,6 +14,7 @@ from .exceptions import (AccessNotRegisteredException,
 from .interfaces import RegistryInterface
 
 logger = logging.getLogger(__name__)
+REQUEST_TIMEOUT = 10
 
 
 class ProxyManager:
@@ -57,13 +58,13 @@ class ProxyManager:
 
         try:
             # Just checking if the server is up
-            response = requests.head(self.url)
+            response = requests.head(self.url, timeout=REQUEST_TIMEOUT)
             logger.info("[ProxyManager] Server is up")
             if response.status_code == 200:
                 logger.info(
                     "[ProxyManager] Successfully connected to {}".format(self.url)
                 )
-                return requests.get(self.url, stream=True)
+                return requests.get(self.url, stream=True, timeout=REQUEST_TIMEOUT)
             else:
                 logger.error(
                     "[ProxyManager] Server returned {}".format(response.status_code)
