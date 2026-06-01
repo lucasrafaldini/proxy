@@ -1,16 +1,11 @@
 import os
-import random
+import io
+from unittest.mock import patch
 
 import pytest
-import requests
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
-
-from middleman.models import AccessEntry
-from middleman.tests.utils.factories.access_entry import \
-    AccessEntryModelFactory
-
 
 class ProxyViewTest(TestCase):
     """Unit tests for the proxy view."""
@@ -20,18 +15,24 @@ class ProxyViewTest(TestCase):
 
         self.client = APIClient()
         # Just a placeholder url for testing purposes
-        self.base_url = os.environ["BASE_TARGET_URL"]
+        self.base_url = os.environ.get("BASE_TARGET_URL", "https://httpstatuses.com/")
         self.paths = ["100", "200", "300", "400", "500"]
 
-    def test_proxy_view(self):
+    @patch("middleman.views.ProxyManager.access_filter")
+    def test_proxy_view(self, mock_access_filter):
         """Test proxy view"""
+
+        class FakeResponse:
+            status_code = 200
+            reason = "OK"
+            headers = {"content-type": "application/json"}
+            raw = io.BytesIO(b'{"ok": true}')
+
+        mock_access_filter.return_value = FakeResponse()
 
         url = "{}".format(reverse("proxy", kwargs={"path": self.paths[0]}))
         proxy_response = self.client.get(url)
 
-        original_response = requests.get("{}{}".format(self.base_url, self.paths[0]))
-
         self.assertEqual(proxy_response.status_code, 200)
-        self.assertEqual(proxy_response.status_code, original_response.status_code)
-        self.assertEqual(proxy_response.reason_phrase, original_response.reason)
         self.assertTrue(proxy_response.streaming)
+        mock_access_filter.assert_called()

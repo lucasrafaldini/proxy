@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiddleMan Control Room</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg-soft: rgba(13, 24, 43, 0.86);
+      --panel-border: rgba(148, 163, 184, 0.16);
+      --text: #e5eefc;
+      --muted: #8ea0bd;
+      --accent: #7cf7c2;
+      --warn: #ffb86b;
+      --danger: #ff7a90;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(125, 184, 255, 0.20), transparent 36%),
+        radial-gradient(circle at top right, rgba(124, 247, 194, 0.16), transparent 30%),
+        linear-gradient(135deg, #050b15 0%, #081321 42%, #0c1728 100%);
+      color: var(--text);
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 40px;
+    }
+
+    .hero {
+      padding: 28px;
+      border: 1px solid var(--panel-border);
+      border-radius: 28px;
+      background: linear-gradient(180deg, rgba(12, 22, 39, 0.95), rgba(5, 11, 21, 0.88));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -20% -45% auto;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(circle, rgba(124, 247, 194, 0.16), transparent 70%);
+      filter: blur(8px);
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(124, 247, 194, 0.08);
+      border: 1px solid rgba(124, 247, 194, 0.2);
+      color: var(--accent);
+      font-size: 12px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 18px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 122, 144, 0.22);
+      background: rgba(255, 122, 144, 0.08);
+      color: #ffc2cd;
+      font-size: 0.84rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-left: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.4rem, 5vw, 4.9rem);
+      line-height: 0.95;
+      max-width: 10ch;
+      letter-spacing: -0.06em;
+    }
+
+    .subhead {
+      margin: 18px 0 0;
+      max-width: 64ch;
+      color: var(--muted);
+      font-size: 1.05rem;
+      line-height: 1.65;
+    }
+
+    .hero-copy {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .lede {
+      margin: 18px 0 0;
+      max-width: 72ch;
+      color: var(--text);
+      font-size: 1.08rem;
+      line-height: 1.7;
+    }
+
+    .lede strong {
+      color: #ffffff;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 18px;
+      margin-top: 26px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card {
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--panel-border);
+      background: var(--bg-soft);
+      backdrop-filter: blur(16px);
+    }
+
+    .metric {
+      grid-column: span 3;
+      min-height: 140px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .metric-value {
+      font-size: clamp(2rem, 4vw, 3.5rem);
+      font-weight: 800;
+      letter-spacing: -0.06em;
+      margin: 10px 0 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .wide {
+      grid-column: span 6;
+    }
+
+    .table-wrap {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+    }
+
+    .triple-wrap {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .rules-grid {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: 0.9fr 1.1fr;
+      gap: 18px;
+    }
+
+    .field {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .field label {
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      font-size: 0.75rem;
+    }
+
+    .field input, .field select {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      background: rgba(5, 11, 21, 0.72);
+      color: var(--text);
+      outline: none;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    .btn {
+      appearance: none;
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: inherit;
+      cursor: pointer;
+      background: rgba(124, 247, 194, 0.14);
+      color: var(--accent);
+      border: 1px solid rgba(124, 247, 194, 0.22);
+    }
+
+    .btn.secondary {
+      background: rgba(125, 184, 255, 0.12);
+      color: #b8d5ff;
+      border-color: rgba(125, 184, 255, 0.18);
+    }
+
+    .btn.danger {
+      background: rgba(255, 122, 144, 0.12);
+      color: #ffc2cd;
+      border-color: rgba(255, 122, 144, 0.18);
+    }
+
+    .rule-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .rule-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 14px;
+      border-radius: 18px;
+      border: 1px solid rgba(148, 163, 184, 0.12);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .rule-item.inactive {
+      opacity: 0.58;
+    }
+
+    .rule-meta {
+      display: grid;
+      gap: 4px;
+    }
+
+    .rule-kind {
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .section-title {
+      margin: 0 0 14px;
+      font-size: 0.86rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 14px 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+      font-size: 0.95rem;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(125, 184, 255, 0.12);
+      color: #b8d5ff;
+      border: 1px solid rgba(125, 184, 255, 0.16);
+      font-size: 0.82rem;
+    }
+
+    .chip.ok { background: rgba(124, 247, 194, 0.12); color: var(--accent); border-color: rgba(124, 247, 194, 0.18); }
+    .chip.warn { background: rgba(255, 184, 107, 0.12); color: var(--warn); border-color: rgba(255, 184, 107, 0.18); }
+    .chip.danger { background: rgba(255, 122, 144, 0.12); color: var(--danger); border-color: rgba(255, 122, 144, 0.18); }
+
+    .stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .incident {
+      display: grid;
+      gap: 12px;
+    }
+
+    .incident-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: baseline;
+      padding: 14px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .incident-line:last-child { border-bottom: 0; }
+
+    .incident-title {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .incident-note {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-top: 4px;
+    }
+
+    .incident-pill {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 110px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 0.72rem;
+    }
+
+    .path-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .path-row:last-child { border-bottom: 0; }
+
+    .path {
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .footer-note {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .callout {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, rgba(255, 122, 144, 0.12), rgba(124, 247, 194, 0.08));
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #f1f5ff;
+      line-height: 1.6;
+    }
+
+    .callout strong {
+      color: var(--accent);
+    }
+
+    @media (max-width: 920px) {
+      .metric, .wide, .table-wrap { grid-column: span 12; }
+      .hero-grid, .table-wrap { grid-template-columns: 1fr; }
+      .triple-wrap { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-copy">
+        <div class="eyebrow">MiddleMan Control Room</div>
+        <div class="status-badge">incident room online</div>
+      </div>
+      <h1>Proxy, memória e contenção em tempo real.</h1>
+      <p class="lede">
+        O que antes era só um proxy virou um <strong>war room</strong> de tráfego: você enxerga entradas, ameaça, bloqueio e pressão operacional em uma
+        mesma tela. Isso dá uma história boa para a hackathon e deixa a demo com cara de produto de verdade.
+      </p>
+
+      <div class="hero-grid">
+        <article class="card metric">
+          <div class="metric-label">Entradas registradas</div>
+          <div class="metric-value">{{ summary.total_entries }}</div>
+          <div class="chip ok">registry online</div>
+        </article>
+        <article class="card metric">
+          <div class="metric-label">IPs únicos</div>
+          <div class="metric-value">{{ summary.unique_ips }}</div>
+          <div class="chip">fingerprints ativas</div>
+        </article>
+        <article class="card metric">
+          <div class="metric-label">Paths únicos</div>
+          <div class="metric-value">{{ summary.unique_paths }}</div>
+          <div class="chip warn">surface monitorada</div>
+        </article>
+        <article class="card metric">
+          <div class="metric-label">Bloqueios</div>
+          <div class="metric-value">{{ blocked_entries }}</div>
+          <div class="chip danger">guard rails</div>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>Modo contenção.</strong> O painel está desenhado para parecer uma sala de crise: cada rota chega com identidade, risco e limite.
+        Se o tráfego apertar, o dashboard deixa isso óbvio em vez de esconder atrás de um formulário simples.
+      </div>
+    </section>
+
+    <section class="triple-wrap">
+      {% for item in incident_summary %}
+        <article class="card">
+          <div class="section-title">{{ item.title }}</div>
+          <div class="metric-value" style="font-size: 2rem; margin-top: 0;">{{ item.value }}</div>
+          <div class="meta">{{ item.hint }}</div>
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="table-wrap">
+      <article class="card wide">
+        <div class="section-title">Top paths</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>Hits</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in top_paths %}
+              <tr>
+                <td>{{ item.path }}</td>
+                <td>{{ item.hits }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="2">Nenhum tráfego ainda. Faça a primeira chamada ao proxy para acender o painel.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </article>
+
+      <aside class="card">
+        <div class="section-title">Recent activity</div>
+        <div class="stack">
+          {% for item in recent_entries %}
+            <div class="path-row">
+              <div>
+                <div class="path">{{ item.entry.path }}</div>
+                <div class="meta">{{ item.entry.ip }} • {{ item.entry.created_at }}</div>
+              </div>
+              <div class="chip {{ item.state }}">
+                {{ item.entry.already_requested }}/{{ item.entry.max_requests }} • {{ item.badge }}
+              </div>
+            </div>
+          {% empty %}
+            <p class="footer-note">Sem atividade recente. Isso é ótimo para testar o primeiro estado do painel.</p>
+          {% endfor %}
+        </div>
+      </aside>
+    </section>
+
+    <section class="table-wrap">
+      <article class="card">
+        <div class="section-title">Threat board</div>
+        <div class="incident">
+          {% for item in incident_feed %}
+            <div class="incident-line">
+              <div>
+                <div class="incident-title">{{ item.path }}</div>
+                <div class="incident-note">{{ item.ip }} · {{ item.note }} · {{ item.ratio }}</div>
+              </div>
+              <div class="incident-pill">{{ item.state }}</div>
+            </div>
+          {% empty %}
+            <p class="footer-note">Nenhum incidente ainda. O primeiro acesso já muda o tom da página.</p>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">Paths under pressure</div>
+        <div class="incident">
+          {% for entry in threat_paths %}
+            <div class="incident-line">
+              <div>
+                <div class="incident-title">{{ entry.path }}</div>
+                <div class="incident-note">{{ entry.ip }} · {{ entry.already_requested }}/{{ entry.max_requests }}</div>
+              </div>
+              <div class="incident-pill">near limit</div>
+            </div>
+          {% empty %}
+            <p class="footer-note">Nenhuma rota está perto do limite. Isso é o cenário ideal para a primeira captura de tela.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="rules-grid">
+      <article class="card">
+        <div class="section-title">Edit blacklist</div>
+        <form method="post" action="">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="create">
+          <div class="field">
+            <label for="rule_type">Rule type</label>
+            <select id="rule_type" name="rule_type">
+              <option value="ip">IP</option>
+              <option value="path">Path</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="value">Value</label>
+            <input id="value" name="value" placeholder="192.168.1.* ou admin/*" required>
+          </div>
+          <div class="btn-row">
+            <button class="btn" type="submit">Add rule</button>
+          </div>
+        </form>
+        <div class="footer-note">
+          O matcher aceita wildcard no final, então você pode bloquear faixas como 10.0.0.* ou grupos de paths como admin/*.
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="section-title">Current rules</div>
+        <div class="rule-list">
+          {% for rule in rules %}
+            <div class="rule-item{% if not rule.enabled %} inactive{% endif %}">
+              <div class="rule-meta">
+                <div class="rule-kind">{{ rule.rule_type }}</div>
+                <div class="path">{{ rule.value }}</div>
+                <div class="meta">{{ rule.enabled|yesno:"enabled,disabled" }} • {{ rule.created_at }}</div>
+              </div>
+              <div class="btn-row">
+                <form method="post" action="">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="toggle">
+                  <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                  <button class="btn secondary" type="submit">Toggle</button>
+                </form>
+                <form method="post" action="">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="rule_id" value="{{ rule.id }}">
+                  <button class="btn danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+          {% empty %}
+            <p class="footer-note">Sem regras ainda. Adicione a primeira para começar a contenção.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <p class="footer-note">
+      Base target: {{ summary.base_target_url }} • Veja o JSON em /insights/ para conectar essa tela a um vídeo demo, screenshot ou automação.
+    </p>
+  </main>
+</body>
+</html>

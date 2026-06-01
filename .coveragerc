@@ -1,0 +1,12 @@
+[run]
+omit =
+    */tests/*
+    */migrations/*
+    proxy/settings.py
+    proxy/asgi.py
+    proxy/wsgi.py
+    proxy/urls.py
+
+[report]
+show_missing = True
+skip_covered = True

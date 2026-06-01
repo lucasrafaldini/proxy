@@ -14,17 +14,22 @@ class test_interfaces(unittest.TestCase):
 
     @pytest.mark.django_db
     def test_create_access_entry(self):
+        key = "12345678901234567890"
+        ip = "10.1.1.1"
+        path = "index/"
+        already_requested = 10
+        max_requests = 120
         self._interface.create_access_entry(
-            AccessEntryModelFactory.key,
-            AccessEntryModelFactory.ip,
-            AccessEntryModelFactory.path,
-            AccessEntryModelFactory.already_requested,
-            AccessEntryModelFactory.max_requests,
+            key,
+            ip,
+            path,
+            already_requested,
+            max_requests,
         )
 
         self.assertEqual(1, AccessEntry.objects.count())
 
-        created_object = AccessEntry.objects.get(key=AccessEntryModelFactory.key)
+        created_object = AccessEntry.objects.get(key=key)
         self.assertTrue(created_object)
         self.assertTrue(
             [
@@ -33,12 +38,7 @@ class test_interfaces(unittest.TestCase):
                 created_object.already_requested,
                 created_object.max_requests,
             ]
-            == [
-                AccessEntryModelFactory.ip,
-                AccessEntryModelFactory.path,
-                AccessEntryModelFactory.already_requested,
-                AccessEntryModelFactory.max_requests,
-            ]
+            == [ip, path, already_requested, max_requests]
         )
 
     @pytest.mark.django_db

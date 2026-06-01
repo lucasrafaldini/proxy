@@ -1,10 +1,12 @@
 # **MiddleMan**
-![DjangoREST](https://img.shields.io/badge/DJANGO-REST-ff1709?style=for-the-badge&logo=django&logoColor=white&color=ff1709&labelColor=gray)
-![Django](https://img.shields.io/badge/django-%23092E20.svg?style=for-the-badge&logo=django&logoColor=white)
-![Postgres](https://img.shields.io/badge/postgres-%23316192.svg?style=for-the-badge&logo=postgresql&logoColor=white)
-![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=for-the-badge&logo=docker&logoColor=white)
+![DjangoREST](https://img.shields.io/badge/Django-REST-ff1709?style=flat-square&logo=django&logoColor=white)
+![Django](https://img.shields.io/badge/Django-4.2-092E20?style=flat-square&logo=django&logoColor=white)
+![Postgres](https://img.shields.io/badge/PostgreSQL-ready-316192?style=flat-square&logo=postgresql&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-enabled-0db7ed?style=flat-square&logo=docker&logoColor=white)
+[![Quality](https://img.shields.io/github/actions/workflow/status/lucasrafaldini/proxy/quality.yml?style=flat-square&label=quality)](https://github.com/lucasrafaldini/proxy/actions)
+![Coverage Gate](https://img.shields.io/badge/Coverage%20gate-80%25%2B-brightgreen?style=flat-square)
 
-Proxy service built with Django, DRF and PostgreSQL.
+Proxy service built with Django, DRF and PostgreSQL, now shaped like a control room for traffic policy and observability.
 
 - [**MiddleMan**](#middleman)
   - [**Explanation**](#explanation)
@@ -21,7 +23,7 @@ Proxy service built with Django, DRF and PostgreSQL.
 
 
 ## **Explanation**
-You define a base url (which is your target) and request from proxy address all paths you want from your target.
+You define a base url (your target) and request from the proxy address all paths you want from your target.
 
 Example:
 
@@ -29,7 +31,22 @@ Let's say you have a target url: `http://www.example.com/` and you want to proxy
 
 So, if the proxy is hosted at `https://awesome-proxy.com/` and you want to access `http://example.com/assets/images` you just send a `GET` request to `https://awesome-proxy.com/assets/images` and you will get the response from `http://example.com/assets/images` __streamed from the server__.
 
-The service will register your `IP Address` and the path you want to access and filter your access based on the `max_requests` and `already_requested` saved in the database for your registered key (an unique hash string with 20 characters made with a combination of your IP + @ + the path you tried to access). In case you don't have a key registered, the service will register it with a default value for `max_requests`(100) and `already_requested`(0).
+The service registers your `IP Address` and the path you want to access, then filters access based on the `max_requests` and `already_requested` saved in the database for your registered key. If you do not have a key registered yet, the service creates one with default values.
+
+The current hackathon-friendly angle is the new control room homepage: it turns the proxy into a visible product, with stats, recent activity and a JSON insights endpoint you can show in a demo.
+
+You can also put the proxy into containment mode with `BLACKLISTED_IPS` and `BLACKLISTED_PATHS`, which block matching traffic before it reaches the target server.
+
+## **What's New (Finish-Up)**
+
+- Control Room dashboard: a polished war-room-style homepage that shows live registry activity, top paths, threat board and containment status.
+- `/insights/` endpoint: a machine-readable JSON summary that powers the dashboard and supports automation.
+- Persistent, editable blacklist: `BlacklistRule` model with a small CRUD UI on the dashboard and admin integration so you can block IPs and paths at runtime without touching `.env` or restarting.
+- Tests & migrations: added a migration for the new model and unit tests for the blacklist flow so contributors can verify behavior locally.
+
+These changes turn the repo into a demoable piece: easy to present in a short hackathon pitch and simple to reproduce.
+
+For runtime operations, the dashboard now lets you create, toggle and delete persistent blacklist rules in the database without touching `.env`.
 
 
 ## **Endpoints**
@@ -39,6 +56,8 @@ You find the endpoints' method, url, body and description in the table bellow.
 | Method | Endpoint url | Body | Description |
 | ------ | ---------------- |---------- |-------------------------------------------------------------------------------- |
 | `GET`  | `/proxy/{path}`  |                  | Returns desired path content as a stream, registering your IP address and the path you tried to access. | 
+| `GET`  | `/`  |                  | Shows the control room dashboard with live registry stats. |
+| `GET`  | `/insights/`  |                  | Returns JSON summary data for the dashboard or external tools. |
 | `GET`  | `/registry`  |                  | List all access entry register paginated                                  |
 | `GET`  | `/registry`  |    `{"key": "access_entry_key"}`              | List one access entry register  |
 | `PATCH`  | `/registry`  |  `{"key": "access_entry_key", "action": "update_max_requests", "max_requests": "999"}`    | Update max requests allowed for the desired access entry indexed by its key |
@@ -69,6 +88,12 @@ Edit .env file with your settings:
 
 `POSTGRES_HOST` is the Postgres host;
 
+`BLACKLISTED_IPS` is a comma-separated list of IPs or wildcard prefixes to block;
+
+`BLACKLISTED_PATHS` is a comma-separated list of paths or wildcard prefixes to block;
+
+Use the dashboard to manage persistent `ip` and `path` blacklist rules during the demo.
+
 Use the Makefile to build, run and even test the project:
 
 For building please use:
@@ -83,12 +108,41 @@ $ make run
 
 
 ### **Testing**
+To run the tests locally (recommended):
 
-To run the tests, you can also use Makefile:
+1. Create a virtualenv and install dev/test dependencies:
 
 ```bash
-$ make test
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r test_requirements.txt
 ```
+
+2. Run the test suite with `pytest`:
+
+```bash
+pytest -q
+```
+
+Coverage gate is enforced in `pytest.ini` with `--cov-fail-under=80` (for `middleman` and `proxy`).
+
+Alternatively you can use the Makefile (which uses Docker in CI-like flows):
+
+```bash
+make test
+```
+
+### **Security checks**
+
+Run static security checks and dependency audit:
+
+```bash
+make security
+```
+
+This runs:
+- `bandit` on application code;
+- `pip-audit` on installed dependencies.
 
 ### **Formatting**
 

@@ -26,6 +26,18 @@ ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", ["*"])
 
 BASE_TARGET_URL = os.environ.get("BASE_TARGET_URL", "http://localhost:8000/")
 
+BLACKLISTED_IPS = [
+    item.strip()
+    for item in os.getenv("BLACKLISTED_IPS", "").split(",")
+    if item.strip()
+]
+
+BLACKLISTED_PATHS = [
+    item.strip()
+    for item in os.getenv("BLACKLISTED_PATHS", "").split(",")
+    if item.strip()
+]
+
 # Application definition
 
 INSTALLED_APPS = [

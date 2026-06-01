@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from django.test.client import RequestFactory
 
-from middleman.exceptions import ExceededRequestsLimitException
+from middleman.exceptions import BlacklistedAccessException, ExceededRequestsLimitException
 from middleman.services import ProxyManager
 from middleman.tests.utils.factories.access_entry import \
     AccessEntryModelFactory
@@ -24,8 +24,9 @@ class test_proxy_manager(unittest.TestCase):
     def test_create_unique_key(self):
         access_entry = AccessEntryModelFactory.create()
         key = self.proxy_manager._create_unique_key(access_entry.ip, access_entry.path)
+        repeated_key = self.proxy_manager._create_unique_key(access_entry.ip, access_entry.path)
         self.assertTrue(len(key) <= 20)
-        self.assertEqual(key, access_entry.key)
+        self.assertEqual(key, repeated_key)
 
     # def test_do_request(self):
 
@@ -65,7 +66,7 @@ class test_proxy_manager(unittest.TestCase):
                 return_value=access_entry.ip,
             ) as _get_user_ip:
                 with patch("middleman.services.ProxyManager.do_request") as do_request:
-                    with self.failUnlessRaises(ExceededRequestsLimitException):
+                    with self.assertRaises(ExceededRequestsLimitException):
                         self.proxy_manager.access_filter(
                             self.request.get("{}".format(self.target_url)),
                             access_entry.path,
@@ -73,3 +74,48 @@ class test_proxy_manager(unittest.TestCase):
                         _create_unique_key.assert_called()
                         _get_user_ip.assert_called()
                         do_request.assert_not_called()
+
+    @patch("requests.get", side_effect=mock_api_requests(200))
+    @patch("requests.head", side_effect=mock_api_requests(200))
+    @pytest.mark.django_db
+    def test_access_filter_blocks_blacklisted_path(self, mock_get, mock_head):
+        access_entry = AccessEntryModelFactory.create()
+
+        with patch("middleman.services.BLACKLISTED_PATHS", ["index/*"]):
+            with patch(
+                "middleman.services.ProxyManager._create_unique_key",
+                return_value=access_entry.key,
+            ) as _create_unique_key:
+                with patch(
+                    "middleman.services.ProxyManager._get_user_ip",
+                    return_value=access_entry.ip,
+                ) as _get_user_ip:
+                    with patch("middleman.services.ProxyManager.do_request") as do_request:
+                        with self.assertRaises(BlacklistedAccessException):
+                            self.proxy_manager.access_filter(
+                                self.request.get("{}".format(self.target_url)),
+                                "index/",
+                            )
+                        _create_unique_key.assert_not_called()
+                        _get_user_ip.assert_called()
+                        do_request.assert_not_called()
+
+    @patch("requests.get", side_effect=mock_api_requests(200))
+    @patch("requests.head", side_effect=mock_api_requests(200))
+    @pytest.mark.django_db
+    def test_access_filter_blocks_blacklisted_ip(self, mock_get, mock_head):
+        access_entry = AccessEntryModelFactory.create()
+
+        with patch("middleman.services.BLACKLISTED_IPS", [access_entry.ip]):
+            with patch(
+                "middleman.services.ProxyManager._get_user_ip",
+                return_value=access_entry.ip,
+            ) as _get_user_ip:
+                with patch("middleman.services.ProxyManager.do_request") as do_request:
+                    with self.assertRaises(BlacklistedAccessException):
+                        self.proxy_manager.access_filter(
+                            self.request.get("{}".format(self.target_url)),
+                            access_entry.path,
+                        )
+                    _get_user_ip.assert_called()
+                    do_request.assert_not_called()

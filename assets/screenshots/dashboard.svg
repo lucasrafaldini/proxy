@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700">
+  <rect width="100%" height="100%" fill="#071022"/>
+  <g transform="translate(40,40)">
+    <text x="0" y="36" fill="#7cf7c2" font-family="Inter, Arial" font-size="28" font-weight="700">MiddleMan Control Room — Dashboard (mock)</text>
+    <rect x="0" y="60" width="320" height="140" rx="14" fill="#0c1728" stroke="#234" />
+    <rect x="340" y="60" width="320" height="140" rx="14" fill="#0c1728" />
+    <rect x="680" y="60" width="320" height="140" rx="14" fill="#0c1728" />
+
+    <g transform="translate(0,220)">
+      <rect x="0" y="0" width="760" height="340" rx="16" fill="#071022" stroke="#1a2b3a" />
+      <text x="14" y="28" fill="#b8d5ff" font-family="Inter, Arial" font-size="18">Top paths</text>
+      <g transform="translate(14,48)" fill="#e5eefc" font-family="Inter, Arial" font-size="16">
+        <text y="0">/api/login — 120 hits</text>
+        <text y="28">/assets/img — 84 hits</text>
+        <text y="56">/admin/ — 41 hits</text>
+      </g>
+    </g>
+
+    <g transform="translate(780,220)">
+      <rect x="0" y="0" width="320" height="140" rx="12" fill="#071022" stroke="#1a2b3a" />
+      <text x="14" y="28" fill="#ffb86b" font-family="Inter, Arial" font-size="16">Threat board</text>
+      <text x="14" y="60" fill="#e5eefc" font-family="Inter, Arial" font-size="14">/api/login • 90/100 • approaching</text>
+    </g>
+  </g>
+</svg>

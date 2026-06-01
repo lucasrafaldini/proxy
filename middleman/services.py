@@ -4,9 +4,11 @@ import requests
 from django.db import transaction
 from requests.models import Request, Response
 
-from middleman.models import AccessEntry
+from middleman.models import AccessEntry, BlacklistRule
+from proxy.settings import BLACKLISTED_IPS, BLACKLISTED_PATHS
 
 from .exceptions import (AccessNotRegisteredException,
+                         BlacklistedAccessException,
                          ExceededRequestsLimitException,
                          ServerNotRespondingException)
 from .interfaces import RegistryInterface
@@ -29,6 +31,26 @@ class ProxyManager:
         if x_forwarded_for:
             return x_forwarded_for.split(",")[0]
         return request.META.get("REMOTE_ADDR")
+
+    def _matches_rule(self, value: str, rule: str) -> bool:
+        """Match exact rules and simple wildcard suffix rules."""
+        if rule.endswith("*"):
+            return value.startswith(rule[:-1])
+        return value == rule
+
+    def _is_blacklisted(self, ip: str, path: str):
+        for rule in BLACKLISTED_IPS:
+            if self._matches_rule(ip, rule):
+                return "ip", rule
+        for rule in BLACKLISTED_PATHS:
+            if self._matches_rule(path, rule):
+                return "path", rule
+        for rule in BlacklistRule.objects.filter(enabled=True):
+            if rule.rule_type == "ip" and self._matches_rule(ip, rule.value):
+                return "ip", rule.value
+            if rule.rule_type == "path" and self._matches_rule(path, rule.value):
+                return "path", rule.value
+        return None
 
     def do_request(self) -> Response or None:
         """Make request to server"""
@@ -56,6 +78,11 @@ class ProxyManager:
         """Filter access to endpoints by IP and path"""
 
         ip = self._get_user_ip(request)
+        blacklist_match = self._is_blacklisted(ip, path)
+        if blacklist_match is not None:
+            rule_type, rule_value = blacklist_match
+            raise BlacklistedAccessException(ip, path, rule_type, rule_value)
+
         key = self._create_unique_key(ip, path)
         if self.model.objects.filter(key=key).exists():
             register = self.model.objects.get(key=key)

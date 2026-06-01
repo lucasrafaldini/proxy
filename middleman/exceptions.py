@@ -1,4 +1,4 @@
-class ServerNotRespondingException(BaseException):
+class ServerNotRespondingException(Exception):
     """
     Exception raised when the requested server is not responding.
     """
@@ -10,15 +10,15 @@ class ServerNotRespondingException(BaseException):
         return "Url '%s' is not responding." % self.url
 
 
-class ExceededRequestsLimitException(BaseException):
+class ExceededRequestsLimitException(Exception):
     """
     Exception raised when the number of requests has exceeded the
     allowed limit.
     """
 
-    def __init__(self, ip, url):
+    def __init__(self, ip, path):
         self.ip = ip
-        self.url = url
+        self.path = path
 
     def __str__(self):
         return "Address {} has exceeded the allowed requests limit for path {}".format(
@@ -26,7 +26,7 @@ class ExceededRequestsLimitException(BaseException):
         )
 
 
-class AccessNotRegisteredException(BaseException):
+class AccessNotRegisteredException(Exception):
     """
     Exception raised when the request is not registered.
     """
@@ -39,4 +39,21 @@ class AccessNotRegisteredException(BaseException):
     def __str__(self):
         return "Request from {} could not be registered for path {} - Key: {}".format(
             self.ip, self.path, self.key
+        )
+
+
+class BlacklistedAccessException(Exception):
+    """
+    Exception raised when the request matches a blacklist rule.
+    """
+
+    def __init__(self, ip, path, rule_type, rule_value):
+        self.ip = ip
+        self.path = path
+        self.rule_type = rule_type
+        self.rule_value = rule_value
+
+    def __str__(self):
+        return "Access from {} to {} blocked by {} rule: {}".format(
+            self.ip, self.path, self.rule_type, self.rule_value
         )

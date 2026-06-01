@@ -19,7 +19,33 @@ class AccessEntry(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.name
+        return self.key
 
     def __repr__(self):
         return "Access from {} to {} at {}".format(self.ip, self.path, self.created_at)
+
+
+class BlacklistRule(models.Model):
+    """A persistent rule that blocks requests before proxying."""
+
+    class RuleType(models.TextChoices):
+        IP = "ip", "IP"
+        PATH = "path", "Path"
+
+    class Meta:
+        app_label = "middleman"
+        db_table = "middleman_blacklist_rule"
+        ordering = ["rule_type", "value"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["rule_type", "value"], name="unique_blacklist_rule"
+            )
+        ]
+
+    rule_type = models.CharField(max_length=8, choices=RuleType.choices)
+    value = models.CharField(max_length=255)
+    enabled = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return "{}: {}".format(self.rule_type, self.value)
