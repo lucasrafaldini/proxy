@@ -14,7 +14,7 @@ class test_interfaces(unittest.TestCase):
 
     @pytest.mark.django_db
     def test_create_access_entry(self):
-        key = "12345678901234567890"
+        key = "test_key_sample"
         ip = "10.1.1.1"
         path = "index/"
         already_requested = 10

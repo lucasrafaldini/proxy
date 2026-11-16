@@ -485,6 +485,7 @@
         </table>
       </article>
 
+      {% if perms_ui.view_clients %}
       <aside class="card">
         <div class="section-title">Recent activity</div>
         <div class="stack">
@@ -503,8 +504,10 @@
           {% endfor %}
         </div>
       </aside>
+      {% endif %}
     </section>
 
+    {% if perms_ui.view_clients %}
     <section class="table-wrap">
       <article class="card">
         <div class="section-title">Threat board</div>
@@ -540,8 +543,15 @@
         </div>
       </article>
     </section>
+    {% endif %}
 
+    {% if not user.is_authenticated %}
+    <p class="footer-note">Per-client activity and blacklist rules are visible to operators only. <a href="/admin/login/?next=/">Log in</a></p>
+    {% endif %}
+
+    {% if perms_ui.view_rules %}
     <section class="rules-grid">
+      {% if perms_ui.add_rules %}
       <article class="card">
         <div class="section-title">Edit blacklist</div>
         <form method="post" action="">
@@ -552,20 +562,29 @@
             <select id="rule_type" name="rule_type">
               <option value="ip">IP</option>
               <option value="path">Path</option>
+              <option value="host">Host (site)</option>
+              <option value="host_re">Host (regex)</option>
             </select>
           </div>
           <div class="field">
             <label for="value">Value</label>
-            <input id="value" name="value" placeholder="192.168.1.* ou admin/*" required>
+            <input id="value" name="value" placeholder="10.0.0.0/24, admin/* ou example.com" required>
           </div>
+          {% if rule_error %}
+            <div class="footer-note" role="alert">Regra inválida: {{ rule_error }}</div>
+          {% endif %}
           <div class="btn-row">
             <button class="btn" type="submit">Add rule</button>
           </div>
         </form>
         <div class="footer-note">
-          O matcher aceita wildcard no final, então você pode bloquear faixas como 10.0.0.* ou grupos de paths como admin/*.
+          IP e path aceitam wildcard no final (10.0.0.*, admin/*); IP aceita sub-redes CIDR (10.0.0.0/24).
+          Host bloqueia um site de destino: example.com (só esse host), *.example.com (subdomínios)
+          ou um IP/CIDR de destino (pode atingir outros sites no mesmo IP).
+          Host (regex) usa sintaxe RE2 sobre o host inteiro, com pontos escapados: (www\.)?example\.com.
         </div>
       </article>
+      {% endif %}
 
       <article class="card">
         <div class="section-title">Current rules</div>
@@ -575,21 +594,28 @@
               <div class="rule-meta">
                 <div class="rule-kind">{{ rule.rule_type }}</div>
                 <div class="path">{{ rule.value }}</div>
-                <div class="meta">{{ rule.enabled|yesno:"enabled,disabled" }} • {{ rule.created_at }}</div>
+                <div class="meta">{{ rule.enabled|yesno:"enabled,disabled" }} • {{ rule.created_at }} • created by v{{ rule.created_by_version }}</div>
+                {% if rule.invalid %}
+                  <div class="meta" role="alert">invalid in v{{ proxy_version }} ({{ rule.invalid.reason }}): {{ rule.invalid.message }} Not applied; fix or delete it.</div>
+                {% endif %}
               </div>
               <div class="btn-row">
+                {% if perms_ui.change_rules %}
                 <form method="post" action="">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="toggle">
                   <input type="hidden" name="rule_id" value="{{ rule.id }}">
                   <button class="btn secondary" type="submit">Toggle</button>
                 </form>
+                {% endif %}
+                {% if perms_ui.delete_rules %}
                 <form method="post" action="">
                   {% csrf_token %}
                   <input type="hidden" name="action" value="delete">
                   <input type="hidden" name="rule_id" value="{{ rule.id }}">
                   <button class="btn danger" type="submit">Delete</button>
                 </form>
+                {% endif %}
               </div>
             </div>
           {% empty %}
@@ -598,9 +624,10 @@
         </div>
       </article>
     </section>
+    {% endif %}
 
     <p class="footer-note">
-      Base target: {{ summary.base_target_url }} • Veja o JSON em /insights/ para conectar essa tela a um vídeo demo, screenshot ou automação.
+      Proxy v{{ proxy_version }} • Base target: {{ summary.base_target_url }} • Veja o JSON em /insights/ para conectar essa tela a um vídeo demo, screenshot ou automação.
     </p>
   </main>
 </body>

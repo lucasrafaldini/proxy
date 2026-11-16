@@ -1,9 +1,11 @@
 from unittest.mock import patch
 
+import pytest
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from middleman.exceptions import BlacklistedAccessException
+from middleman.tests.utils.auth import token_client
 
 
 class TestViewsBranches:
@@ -16,11 +18,14 @@ class TestViewsBranches:
         assert response.status_code == 403
 
     @patch("middleman.views.ProxyManager.access_filter", side_effect=Exception("boom"))
-    def test_proxy_view_returns_400_on_unexpected_error(self, _mock_access_filter):
+    def test_proxy_view_returns_500_on_unexpected_error(self, _mock_access_filter):
         response = self.client.get(reverse("proxy", kwargs={"path": "admin"}))
-        assert response.status_code == 400
+        assert response.status_code == 500
+        assert response.content == b"Internal proxy error."  # no internals leaked
 
+    @pytest.mark.django_db
     def test_registry_patch_missing_max_requests_returns_400(self):
+        self.client, _ = token_client()
         response = self.client.patch(
             reverse("registry"),
             data={"key": "abc", "action": "update_max_requests"},
@@ -28,7 +33,9 @@ class TestViewsBranches:
         )
         assert response.status_code == 400
 
+    @pytest.mark.django_db
     def test_registry_patch_invalid_action_returns_400(self):
+        self.client, _ = token_client()
         response = self.client.patch(
             reverse("registry"),
             data={"key": "abc", "action": "invalid_action"},

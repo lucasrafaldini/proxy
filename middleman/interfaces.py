@@ -1,19 +1,17 @@
-import logging
-
 from django.db.models.query import QuerySet
 
 from middleman.serializers import AccessEntrySerializer
 
 from .models import AccessEntry
 
-logger = logging.getLogger(__name__)
-
 
 class RegistryInterface:
-    """Interface to create new access registers"""
+    """
+    Data access for access entries. Lookups of unknown keys raise
+    ``AccessEntry.DoesNotExist``; callers decide how to answer and log it.
+    """
 
     def __init__(self):
-        """Initialize the interface"""
         self.model = AccessEntry
 
     def create_access_entry(
@@ -23,9 +21,9 @@ class RegistryInterface:
         path: str,
         already_requested: int = 0,
         max_requests: int = 100,
-    ) -> None:
+    ) -> AccessEntry:
         """Create a new access entry"""
-        self.model.objects.create(
+        return self.model.objects.create(
             key=key,
             ip=ip,
             path=path,
@@ -33,46 +31,36 @@ class RegistryInterface:
             max_requests=max_requests,
         )
 
-    def get_access_entry(self, key) -> AccessEntry:
-        """Get an access entry"""
-        try:
-            return self.model.objects.get(key=key)
-        except AccessEntry.DoesNotExist:
-            logger.exception("Access entry does not exist")
-            raise AccessEntry.DoesNotExist
+    def get_or_create_access_entry(self, key: str, ip: str, path: str) -> AccessEntry:
+        """Entry for ``key``, created with defaults if missing (safe under concurrency)."""
+        entry, _ = self.model.objects.get_or_create(key=key, defaults={"ip": ip, "path": path})
+        return entry
+
+    def get_access_entry(self, key: str) -> AccessEntry:
+        """Get an access entry; raises AccessEntry.DoesNotExist."""
+        return self.model.objects.get(key=key)
 
     def get_all_access_entries(self) -> QuerySet:
         """Get all access entries"""
         return self.model.objects.all().order_by("created_at")
 
-    def update_max_requests(
-        self, key: str, max_requests: int
-    ) -> AccessEntry or AccessEntry.DoesNotExist:
-        """Update the max requests of an access entry"""
-        try:
-            target_obj = self.model.objects.get(key=key)
-            serializer_class = AccessEntrySerializer(
-                target_obj, data={"max_requests": max_requests}, partial=True
-            )
-            if serializer_class.is_valid():
-                serializer_class.save()
-            return serializer_class
-        except AccessEntry.DoesNotExist:
-            logger.exception("Access entry does not exist")
-            raise AccessEntry.DoesNotExist
+    def _update(self, key: str, data: dict) -> AccessEntrySerializer:
+        target_obj = self.model.objects.get(key=key)
+        serializer = AccessEntrySerializer(target_obj, data=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+        return serializer
 
-    def reset_already_requested(
-        self, key: str
-    ) -> AccessEntry or AccessEntry.DoesNotExist:
-        """Reset the already requested flag of an access entry"""
-        try:
-            target_obj = self.model.objects.get(key=key)
-            serializer_class = AccessEntrySerializer(
-                target_obj, data={"already_requested": 0}, partial=True
-            )
-            if serializer_class.is_valid():
-                serializer_class.save()
-            return serializer_class
-        except AccessEntry.DoesNotExist:
-            logger.exception("Access entry does not exist")
-            raise AccessEntry.DoesNotExist
+    def update_max_requests(self, key: str, max_requests: int) -> AccessEntrySerializer:
+        """
+        Update max_requests. Returns the serializer (check ``.errors``);
+        raises AccessEntry.DoesNotExist.
+        """
+        return self._update(key, {"max_requests": max_requests})
+
+    def reset_already_requested(self, key: str) -> AccessEntrySerializer:
+        """
+        Reset already_requested to 0. Returns the serializer (check
+        ``.errors``); raises AccessEntry.DoesNotExist.
+        """
+        return self._update(key, {"already_requested": 0})

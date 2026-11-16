@@ -11,3 +11,6 @@ DATABASES = {
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.MD5PasswordHasher",
 ]
+
+# Django's test client sends Host: testserver.
+ALLOWED_HOSTS_BASELINE = [*ALLOWED_HOSTS_BASELINE, "testserver"]  # noqa: F405

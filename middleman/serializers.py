@@ -15,4 +15,6 @@ class AccessEntrySerializer(serializers.ModelSerializer):
             "already_requested",
             "max_requests",
             "created_at",
+            "created_by_version",
         )
+        read_only_fields = ("created_by_version",)

@@ -1,5 +1,4 @@
 import random
-from typing import List
 
 import factory
 from django.utils import timezone
@@ -17,7 +16,7 @@ class AccessEntryModelFactory(factory.django.DjangoModelFactory):
 
     ip = factory.LazyFunction(random_ip)
     path = "index/"
-    key = factory.Sequence(lambda n: "{}".format(10 ** 19 + n))
+    key = factory.Sequence(lambda n: "key_{:04d}".format(n))
     already_requested = 52
     max_requests = 100
     created_at = timezone.now()

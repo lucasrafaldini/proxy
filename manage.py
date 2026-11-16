@@ -7,6 +7,11 @@ import sys
 def main():
     """Run administrative tasks."""
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "proxy.settings")
+    # Debug mode only when explicitly requested at startup, e.g.
+    # `python manage.py runserver --debug` (or DEBUG=true in the environment).
+    if "--debug" in sys.argv[1:]:
+        sys.argv = [arg for arg in sys.argv if arg != "--debug"]
+        os.environ["DEBUG"] = "true"
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
