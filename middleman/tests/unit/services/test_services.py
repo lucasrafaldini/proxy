@@ -15,6 +15,7 @@ from middleman.exceptions import (AccessNotRegisteredException,
                                   ServerNotRespondingException)
 from middleman.models import AccessEntry, BlacklistRule
 from middleman.rules import parse_ip_network
+from middleman.ruleset import RuleSet
 from middleman.services import ProxyManager
 from middleman.tests.utils.factories.access_entry import \
     AccessEntryModelFactory
@@ -40,8 +41,8 @@ class test_proxy_manager(unittest.TestCase):
 
     # def test_do_request(self):
 
-    @patch("requests.get", side_effect=mock_api_requests(200))
-    @patch("requests.head", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.get", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.head", side_effect=mock_api_requests(200))
     @pytest.mark.django_db
     def test_access_filter_pass(self, mock_get, mock_head):
         access_entry = AccessEntryModelFactory.create()
@@ -85,8 +86,8 @@ class test_proxy_manager(unittest.TestCase):
                         _get_user_ip.assert_called()
                         do_request.assert_not_called()
 
-    @patch("requests.get", side_effect=mock_api_requests(200))
-    @patch("requests.head", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.get", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.head", side_effect=mock_api_requests(200))
     @pytest.mark.django_db
     def test_access_filter_blocks_blacklisted_path(self, mock_get, mock_head):
         access_entry = AccessEntryModelFactory.create()
@@ -110,8 +111,8 @@ class test_proxy_manager(unittest.TestCase):
                         _get_user_ip.assert_called()
                         do_request.assert_not_called()
 
-    @patch("requests.get", side_effect=mock_api_requests(200))
-    @patch("requests.head", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.get", side_effect=mock_api_requests(200))
+    @patch("middleman.upstream.head", side_effect=mock_api_requests(200))
     @pytest.mark.django_db
     def test_access_filter_blocks_blacklisted_ip(self, mock_get, mock_head):
         access_entry = AccessEntryModelFactory.create()
@@ -189,8 +190,8 @@ class CidrBlacklistMatchingTest(SimpleTestCase):
 
     def test_settings_blacklisted_ips_support_cidr(self):
         with patch("middleman.services.BLACKLISTED_IPS", ["192.168.1.0/24"]):
-            with patch("middleman.services.BlacklistRule.objects") as objects:
-                objects.filter.return_value = []
+            # No database rules: only the setting applies.
+            with patch("middleman.services.cached_ruleset", return_value=RuleSet()):
                 self.assertEqual(
                     self.proxy_manager._is_blacklisted("192.168.1.42", "index/"),
                     ("ip", "192.168.1.0/24"),
@@ -423,8 +424,8 @@ class HostRuleValidationTest(SimpleTestCase):
                 self.assertIn("value", ctx.exception.message_dict)
 
 
-@patch("middleman.services.requests.get")
-@patch("middleman.services.requests.head")
+@patch("middleman.upstream.get")
+@patch("middleman.upstream.head")
 class DestinationBlockingTest(TestCase):
     """Host rules block a destination site, including via redirects."""
 

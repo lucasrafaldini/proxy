@@ -101,8 +101,8 @@ class ClientPolicyApiTest(TestCase):
         self.assertEqual([p["ip"] for p in self.client.get("/clients/").json()], [PEER, "198.51.100.41"])
 
 
-@patch("middleman.services.requests.get", side_effect=upstream_response)
-@patch("middleman.services.requests.head", side_effect=upstream_response)
+@patch("middleman.upstream.get", side_effect=upstream_response)
+@patch("middleman.upstream.head", side_effect=upstream_response)
 class HidingEffectTest(TestCase):
     def setUp(self):
         self.proxy_client = APIClient()

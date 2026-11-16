@@ -11,11 +11,23 @@ import re
 
 from middleman.destinations import parse_host_regex, parse_host_rule
 from middleman.exceptions import InvalidRuleError
+from middleman.user_agents import (RULE_TYPE_USER_AGENT,
+                                   RULE_TYPE_USER_AGENT_RE,
+                                   parse_user_agent_regex,
+                                   parse_user_agent_rule)
 
 RULE_TYPE_IP = "ip"
 RULE_TYPE_PATH = "path"
 RULE_TYPE_HOST = "host"
 RULE_TYPE_HOST_RE = "host_re"
+# RULE_TYPE_USER_AGENT ("user_agent") / RULE_TYPE_USER_AGENT_RE ("user_agent_re")
+# are defined in middleman.user_agents and re-exported here.
+
+# Rules about who is asking, checked before rate limiting.
+CLIENT_RULE_TYPES = (RULE_TYPE_IP, RULE_TYPE_PATH, RULE_TYPE_USER_AGENT, RULE_TYPE_USER_AGENT_RE)
+USER_AGENT_RULE_TYPES = (RULE_TYPE_USER_AGENT, RULE_TYPE_USER_AGENT_RE)
+# Rules about where the proxy would connect, checked on the target and every redirect hop.
+HOST_RULE_TYPES = (RULE_TYPE_HOST, RULE_TYPE_HOST_RE)
 
 # A wildcard IP rule is a non-empty prefix of an IPv4/IPv6 address + "*".
 _IP_PREFIX_WILDCARD = re.compile(r"[0-9a-fA-F:.]+\*")
@@ -103,7 +115,8 @@ def validate_path_rule(value: str) -> None:
 def validate_rule(rule_type: str, value: str):
     """
     Validate ``value`` for ``rule_type``. Returns the parsed HostRule for
-    host/host_re rules and None otherwise; raises InvalidRuleError.
+    host/host_re rules, the parsed UserAgentRule for user_agent/user_agent_re
+    rules and None otherwise; raises InvalidRuleError.
     """
     if rule_type == RULE_TYPE_IP:
         return validate_ip_rule(value)
@@ -113,6 +126,10 @@ def validate_rule(rule_type: str, value: str):
         return parse_host_rule(value)
     if rule_type == RULE_TYPE_HOST_RE:
         return parse_host_regex(value)
+    if rule_type == RULE_TYPE_USER_AGENT:
+        return parse_user_agent_rule(value)
+    if rule_type == RULE_TYPE_USER_AGENT_RE:
+        return parse_user_agent_regex(value)
     raise InvalidRuleError(
         "unknown_rule_type", "Unknown rule type {!r}.".format(rule_type), rule_type, value
     )

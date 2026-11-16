@@ -1,3 +1,4 @@
+import functools
 import hashlib
 import ipaddress
 import logging
@@ -5,16 +6,22 @@ from typing import Optional, Tuple
 from urllib.parse import urljoin
 
 import requests
+from django.db import DatabaseError
 from django.db.models import F
 from django.http import HttpRequest
 from requests.models import Response
 
-from middleman.models import AccessEntry, BlacklistRule
-from middleman.rules import (RULE_TYPE_IP, RULE_TYPE_PATH, parse_ip_network,
+from middleman.models import AccessEntry
+from middleman.rules import (RULE_TYPE_IP, RULE_TYPE_PATH,
+                             RULE_TYPE_USER_AGENT, RULE_TYPE_USER_AGENT_RE,
+                             USER_AGENT_RULE_TYPES, parse_ip_network,
                              validate_ip_rule, validate_path_rule)
-from proxy.settings import BLACKLISTED_IPS, BLACKLISTED_PATHS
+from middleman.ruleset import RuleSet, cached_ruleset, compile_client_rule
+from proxy.settings import (BLACKLISTED_IPS, BLACKLISTED_PATHS,
+                            BLACKLISTED_USER_AGENTS,
+                            BLACKLISTED_USER_AGENTS_RE)
 
-from . import abuse
+from . import abuse, upstream
 from .client_ip import ClientResolution, resolve_client
 from .destinations import (host_from_url, host_matches, parse_ip_literal,
                            system_resolver)
@@ -27,13 +34,14 @@ from .exceptions import (AccessNotRegisteredException,
                          ServerNotRespondingException,
                          UpstreamStatusException, UpstreamTimeoutException)
 from .interfaces import RegistryInterface
+from .user_agents import (parse_user_agent_regex, parse_user_agent_rule,
+                          user_agent_from_meta)
 
 logger = logging.getLogger(__name__)
 REQUEST_TIMEOUT = 10
 MAX_REDIRECTS = 10
 REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
-HOST_RULE_TYPES = (BlacklistRule.RuleType.HOST, BlacklistRule.RuleType.HOST_RE)
 INVALID_RULE_ACTION = (
     "fix or delete it on the dashboard, or run: "
     "python manage.py check_blacklist_rules --disable-invalid"
@@ -59,6 +67,39 @@ def _report_invalid_rule(source: str, rule_type: str, value: str, error: Invalid
     )
 
 
+def _report_invalid_database_rule(rule, error) -> None:
+    _report_invalid_rule(
+        "database", rule.rule_type, rule.value, error,
+        rule_id=rule.pk, created_by_version=rule.created_by_version,
+    )
+
+
+_SETTING_RULE_SOURCES = (
+    ("BLACKLISTED_IPS", RULE_TYPE_IP, validate_ip_rule),
+    ("BLACKLISTED_PATHS", RULE_TYPE_PATH, validate_path_rule),
+    ("BLACKLISTED_USER_AGENTS", RULE_TYPE_USER_AGENT, parse_user_agent_rule),
+    ("BLACKLISTED_USER_AGENTS_RE", RULE_TYPE_USER_AGENT_RE, parse_user_agent_regex),
+)
+
+
+@functools.lru_cache(maxsize=16)
+def _compiled_setting_rules(*values_per_setting) -> RuleSet:
+    """
+    The startup-setting rules (one tuple of values per _SETTING_RULE_SOURCES
+    entry), validated and compiled once; invalid entries are reported and skipped.
+    """
+    compiled = []
+    for (setting_name, rule_type, validator), values in zip(_SETTING_RULE_SOURCES, values_per_setting):
+        for value in values:
+            try:
+                parsed = validator(value)
+            except InvalidRuleError as error:
+                _report_invalid_rule(setting_name, rule_type, value, error)
+                continue
+            compiled.append(compile_client_rule(rule_type, value, parsed))
+    return RuleSet(compiled)
+
+
 class ProxyManager:
     def __init__(self, url: str):
         self.url = url
@@ -67,10 +108,12 @@ class ProxyManager:
         # {"limit": <max_requests>, "remaining": <requests left>}
         self.rate_limit = None
         self.client_ip = None  # set by access_filter, for logging
+        self.user_agent = ""  # set by access_filter ("" when the header is missing)
         # Set from the client's ClientPolicy: the client may not see its limits.
         self.hide_rate_limit_headers = False
         self.client_resolution = None  # set by _get_user_ip
         self._dns_cache = {}
+        self._rules = None  # compiled database rules, fetched once per request
 
     def _create_unique_key(self, ip: str, path: str) -> str:
         """
@@ -131,46 +174,26 @@ class ProxyManager:
             "X-RateLimit-Remaining": str(self.rate_limit["remaining"]),
         }
 
-    @staticmethod
-    def _valid_setting_rules(setting_name: str, rule_type: str, values, validator):
-        for value in values:
-            try:
-                validator(value)
-            except InvalidRuleError as error:
-                _report_invalid_rule(setting_name, rule_type, value, error)
-                continue
-            yield value
+    def _ruleset(self) -> RuleSet:
+        """Compiled database rules (see middleman/ruleset.py), shared by every check of this request."""
+        if self._rules is None:
+            self._rules = cached_ruleset(_report_invalid_database_rule)
+        return self._rules
 
-    @staticmethod
-    def _valid_database_rules(queryset):
-        """Enabled rules that are valid in this version, with their parsed form."""
-        for rule in queryset:
-            try:
-                parsed = rule.parse()
-            except InvalidRuleError as error:
-                _report_invalid_rule(
-                    "database", rule.rule_type, rule.value, error,
-                    rule_id=rule.pk, created_by_version=rule.created_by_version,
-                )
-                continue
-            yield rule, parsed
-
-    def _is_blacklisted(self, ip: str, path: str) -> Optional[Tuple[str, str]]:
-        for rule in self._valid_setting_rules("BLACKLISTED_IPS", RULE_TYPE_IP, BLACKLISTED_IPS, validate_ip_rule):
-            if self._matches_ip_rule(ip, rule):
-                return "ip", rule
-        for rule in self._valid_setting_rules("BLACKLISTED_PATHS", RULE_TYPE_PATH, BLACKLISTED_PATHS, validate_path_rule):
-            if self._matches_rule(path, rule):
-                return "path", rule
-        client_rules = BlacklistRule.objects.filter(
-            enabled=True, rule_type__in=(RULE_TYPE_IP, RULE_TYPE_PATH)
+    def _is_blacklisted(self, ip: str, path: str, user_agent: str = "") -> Optional[Tuple[str, str]]:
+        """
+        (rule_type, rule value) of the first client rule matching the request,
+        else None. Startup-setting rules first (ip, path, user_agent,
+        user_agent_re), then database rules ordered by type and value.
+        """
+        setting_rules = _compiled_setting_rules(
+            tuple(BLACKLISTED_IPS), tuple(BLACKLISTED_PATHS),
+            tuple(BLACKLISTED_USER_AGENTS), tuple(BLACKLISTED_USER_AGENTS_RE),
         )
-        for rule, _ in self._valid_database_rules(client_rules):
-            if rule.rule_type == RULE_TYPE_IP and self._matches_ip_rule(ip, rule.value):
-                return "ip", rule.value
-            if rule.rule_type == RULE_TYPE_PATH and self._matches_rule(path, rule.value):
-                return "path", rule.value
-        return None
+        match = setting_rules.match_client(ip, path, user_agent)
+        if match is not None:
+            return match
+        return self._ruleset().match_client(ip, path, user_agent)
 
     def _resolve(self, host: str):
         """Resolve a host once per ProxyManager (only needed for IP host rules)."""
@@ -187,11 +210,10 @@ class ProxyManager:
         host = host_from_url(url)
         if not host:
             return None
-        rules = BlacklistRule.objects.filter(enabled=True, rule_type__in=HOST_RULE_TYPES)
-        for rule, parsed in self._valid_database_rules(rules):
-            if parsed.kind == "network" and parse_ip_literal(host) is None and not self._resolve(host):
+        for rule in self._ruleset().host_rules:
+            if rule.parsed.kind == "network" and parse_ip_literal(host) is None and not self._resolve(host):
                 raise DestinationUnverifiableException(host, rule.value)
-            if host_matches(parsed, host, resolver=self._resolve):
+            if host_matches(rule.parsed, host, resolver=self._resolve):
                 return rule.value
         return None
 
@@ -210,7 +232,7 @@ class ProxyManager:
         """
         url = self.url
         for _ in range(MAX_REDIRECTS + 1):
-            response = requests.get(
+            response = upstream.get(
                 url, stream=True, timeout=REQUEST_TIMEOUT, allow_redirects=False
             )
             location = None
@@ -219,7 +241,7 @@ class ProxyManager:
             if not location:
                 return response
             next_url = urljoin(url, location)
-            response.close()
+            upstream.discard(response)
             self._check_destination(next_url)
             logger.info(
                 "[ProxyManager] Following upstream redirect | status=%s from=%r to=%r",
@@ -238,7 +260,7 @@ class ProxyManager:
         BlockedDestinationException / DestinationUnverifiableException.
         """
         try:
-            head = requests.head(self.url, timeout=REQUEST_TIMEOUT)
+            head = upstream.head(self.url, timeout=REQUEST_TIMEOUT)
             if head.status_code != 200:
                 logger.error(
                     "[ProxyManager] Target failed the availability check "
@@ -272,6 +294,8 @@ class ProxyManager:
         detector, whatever the outcome.
         """
         ip = self.client_ip = self._get_user_ip(request)
+        self.user_agent = user_agent_from_meta(request.META)
+        self._rules = None  # fresh rules for every request, shared by its redirect hops
         resolution = self.client_resolution or ClientResolution(ip, ip, False, ())
         signals = abuse.request_signals(request.META, resolution)
         try:
@@ -281,11 +305,14 @@ class ProxyManager:
             abuse.report(ip, signals)
 
     def _filter_and_fetch(self, ip: str, path: str, signals: list) -> Response:
-        blacklist_match = self._is_blacklisted(ip, path)
+        blacklist_match = self._is_blacklisted(ip, path, self.user_agent)
         if blacklist_match is not None:
             rule_type, rule_value = blacklist_match
             signals.append(("blacklist_hit", ""))
-            raise BlacklistedAccessException(ip, path, rule_type, rule_value)
+            raise BlacklistedAccessException(
+                ip, path, rule_type, rule_value,
+                user_agent=self.user_agent if rule_type in USER_AGENT_RULE_TYPES else None,
+            )
         # Blocked sites are rejected before rate limiting, so they never count.
         self._check_destination(self.url, ip, path)
 
@@ -293,9 +320,11 @@ class ProxyManager:
         try:
             entry = RegistryInterface().get_or_create_access_entry(key, ip, path)
         except Exception as exc:
-            logger.exception(
-                "[ProxyManager] Could not store access entry | key=%s ip=%s path=%r", key, ip, path
-            )
+            if not isinstance(exc, DatabaseError):
+                # Database errors are explained (one semantic line) by ProxyView.
+                logger.exception(
+                    "[ProxyManager] Could not store access entry | key=%s ip=%s path=%r", key, ip, path
+                )
             raise AccessNotRegisteredException(key, ip, path) from exc
 
         # Reserve one request atomically. A separate "check, then increment

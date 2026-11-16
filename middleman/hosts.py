@@ -152,8 +152,15 @@ def runtime_hosts():
         from middleman.models import AllowedHost
 
         hosts = tuple(AllowedHost.objects.values_list("host", flat=True))
-    except Exception:
-        logger.exception("[AllowedHosts] Could not load runtime hosts; only the baseline is accepted")
+    except Exception as exc:
+        from django.db import DatabaseError
+
+        if isinstance(exc, DatabaseError):
+            from middleman.diagnostics import log_database_error
+
+            log_database_error(logger, "AllowedHosts", exc, fallback="only the baseline hosts are accepted")
+        else:
+            logger.exception("[AllowedHosts] Could not load runtime hosts; only the baseline is accepted")
         return ()
     with _cache_lock:
         _cache["hosts"], _cache["loaded_at"] = hosts, now
@@ -210,6 +217,12 @@ class AllowedHostsMiddleware:
                 raw_host, client, request.path,
             )
         abuse.report(client, [("invalid_host_header", "")])
-        return HttpResponseBadRequest(
+        response = HttpResponseBadRequest(
             "Bad request: invalid Host header.", content_type="text/plain; charset=utf-8"
         )
+        # The request never reaches RequestContextMiddleware: same header and access line here.
+        from middleman.observability import ensure_request_id, log_access
+
+        response["X-Request-ID"] = ensure_request_id(request)
+        log_access(request, response.status_code)
+        return response

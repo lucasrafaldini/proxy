@@ -1,83 +1,14 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Django runtime and media
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-test_db.sqlite3
-media/
-staticfiles/
-
-# Test, coverage, and pytest artifacts
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-coverage/
-
-# Virtual environments
-.env
-.env.*
+# Local environment
 .venv/
-venv/
-ENV/
-env/
+.env
 
-# Operating system files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-.AppleDouble
-.LSOverride
-
-# Editor and IDE configurations
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-*.sublime-project
-*.sublime-workspace
-
-# AI Agent / Tooling metadata
-.cursor/
-.cursorrules
-.claude/
-CLAUDE.md
-.windsurf/
-.gemini/
-.agent/
-AGENTS.md
+# Python / test artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.benchmarks/
+test_db.sqlite3
+*.sqlite3

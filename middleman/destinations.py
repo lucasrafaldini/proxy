@@ -226,6 +226,33 @@ def _compile_regex(pattern: str):
     return re2.compile(pattern, _re2_options())
 
 
+def compile_rule_regex(pattern: str, value: str, rule_type: str):
+    """
+    Compile a rule regex with RE2 (case-insensitive), shared by every regex
+    rule type. Raises ``InvalidRuleError`` with reason ``regex_syntax`` or
+    ``regex_too_complex``; type-specific lints are left to the caller.
+    """
+    try:
+        compiled = _compile_regex(pattern)
+    except re2.error as exc:
+        detail = exc.args[0] if exc.args else exc
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", "replace")
+        raise _invalid(
+            "regex_syntax",
+            "Invalid regex: {}. Rules use RE2 syntax (no backreferences or lookarounds).".format(detail),
+            value, rule_type,
+        )
+    if compiled.programsize > MAX_REGEX_PROGRAM_SIZE:
+        raise _invalid(
+            "regex_too_complex",
+            "Regex is too complex (compiled size {} > {}); simplify large or nested "
+            "repetitions such as {{1,100}}.".format(compiled.programsize, MAX_REGEX_PROGRAM_SIZE),
+            value, rule_type,
+        )
+    return compiled
+
+
 def parse_host_regex(value: str) -> HostRule:
     """
     Parse and lint a ``host_re`` rule. Raises ``InvalidRuleError`` (a ValueError)
@@ -281,24 +308,7 @@ def parse_host_regex(value: str) -> HostRule:
             "literal dot, or '.*' / '.+' for a wildcard.".format(dot),
             value, rule_type,
         )
-    try:
-        compiled = _compile_regex(pattern)
-    except re2.error as exc:
-        detail = exc.args[0] if exc.args else exc
-        if isinstance(detail, bytes):
-            detail = detail.decode("utf-8", "replace")
-        raise _invalid(
-            "regex_syntax",
-            "Invalid regex: {}. Rules use RE2 syntax (no backreferences or lookarounds).".format(detail),
-            value, rule_type,
-        )
-    if compiled.programsize > MAX_REGEX_PROGRAM_SIZE:
-        raise _invalid(
-            "regex_too_complex",
-            "Regex is too complex (compiled size {} > {}); simplify large or nested "
-            "repetitions such as {{1,100}}.".format(compiled.programsize, MAX_REGEX_PROGRAM_SIZE),
-            value, rule_type,
-        )
+    compiled = compile_rule_regex(pattern, value, rule_type)
     if all(compiled.fullmatch(probe) for probe in _MATCH_ALL_PROBES):
         raise _invalid(
             "regex_matches_everything",

@@ -242,8 +242,8 @@ class ConfigValidationTest(SimpleTestCase):
                         abuse.get_config()
 
 
-@patch("middleman.services.requests.get", side_effect=upstream_response)
-@patch("middleman.services.requests.head", side_effect=upstream_response)
+@patch("middleman.upstream.get", side_effect=upstream_response)
+@patch("middleman.upstream.head", side_effect=upstream_response)
 class EndToEndDetectionTest(TestCase):
     """Real requests through the proxy until the client gets flagged."""
 

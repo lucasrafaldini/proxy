@@ -1,4 +1,6 @@
 [run]
+# Intermediate data, not a report: kept in the virtualenv (COVERAGE_FILE overrides it).
+data_file = .venv/.coverage
 omit =
     */tests/*
     */migrations/*

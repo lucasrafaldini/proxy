@@ -12,6 +12,6 @@ cd "$REPO_ROOT"
 rm -f "$OUT"
 
 zip -r "$OUT" . -x "./.git/*" "./.venv/*" "./.pytest_cache/*" "*/__pycache__/*" "*.pyc" \
-    "*.sqlite3" "./.coverage" "./coverage.xml" "./.env"
+    "*.sqlite3" "./.coverage" "./coverage.xml" "./.env" "./htmlcov/*" "./.benchmarks/*"
 
 echo "Created $OUT"

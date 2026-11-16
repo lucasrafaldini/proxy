@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 from middleman.exceptions import BlacklistedAccessException, ExceededRequestsLimitException
 from middleman.models import AccessEntry, BlacklistRule
 from middleman.services import ProxyManager
+from middleman.tests.utils.blocks import assert_policy_block
 
 
 class FakeUpstreamResponse:
@@ -19,6 +20,10 @@ class FakeUpstreamResponse:
     def __init__(self):
         self.headers = {"content-type": "application/json"}
         self.raw = io.BytesIO(b'{"ok": true}')
+        self.closed = False
+
+    def close(self):  # like requests.Response.close
+        self.closed = True
 
 
 def access_filter_with_rate_limit(limit, remaining):
@@ -198,10 +203,11 @@ class ProxyViewRateLimitIntegrationTest(TestCase):
     def test_cidr_rule_blocks_client_with_403(self, mock_do_request):
         BlacklistRule.objects.create(rule_type="ip", value="10.0.0.0/24")
 
-        blocked = self.client.get(self.url, REMOTE_ADDR="10.0.0.42")
+        with self.assertLogs("middleman.views", "WARNING") as logs:
+            blocked = self.client.get(self.url, REMOTE_ADDR="10.0.0.42")
 
-        self.assertEqual(blocked.status_code, 403)
-        self.assertIn(b"10.0.0.0/24", blocked.content)
+        assert_policy_block(self, blocked, logs.output, hidden=["10.0.0.0/24", "10.0.0.42"])
+        self.assertIn("rule='10.0.0.0/24'", logs.output[0])
         self.assertFalse(blocked.has_header("X-RateLimit-Limit"))
         mock_do_request.assert_not_called()
 
@@ -210,8 +216,8 @@ class ProxyViewRateLimitIntegrationTest(TestCase):
         self.assertEqual(allowed.status_code, 200)
 
 
-@patch("middleman.services.requests.get")
-@patch("middleman.services.requests.head")
+@patch("middleman.upstream.get")
+@patch("middleman.upstream.head")
 class ProxyViewHostRuleTest(TestCase):
     """Host (site) rules through the full view, with only HTTP mocked."""
 
@@ -230,10 +236,11 @@ class ProxyViewHostRuleTest(TestCase):
         with patch("middleman.views.BASE_TARGET_URL", "https://target.example/"):
             BlacklistRule.objects.create(rule_type="host", value="target.example")
 
-            response = self.client.get(self.url)
+            with self.assertLogs("middleman.views", "WARNING") as logs:
+                response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 403)
-        self.assertIn(b"Access to target.example blocked by host rule: target.example", response.content)
+        assert_policy_block(self, response, logs.output, hidden=["target.example", "host rule"])
+        self.assertIn("host='target.example' rule='target.example'", logs.output[0])
         self.assertFalse(response.has_header("X-RateLimit-Limit"))
         head.assert_not_called()
 
@@ -242,10 +249,12 @@ class ProxyViewHostRuleTest(TestCase):
         head.return_value = FakeUpstreamResponse()
         get.return_value = self._redirect("https://www.blocked.example/landing")
 
-        response = self.client.get(self.url)
+        with self.assertLogs("middleman.views", "WARNING") as logs:
+            response = self.client.get(self.url)
 
-        self.assertEqual(response.status_code, 403)
-        self.assertIn(b"www.blocked.example", response.content)
+        # The redirect target may be internal: it is only in the log.
+        assert_policy_block(self, response, logs.output, hidden=["blocked.example"])
+        self.assertIn("host='www.blocked.example'", logs.output[0])
         self.assertEqual(get.call_count, 1)
         # The reserved request was released: nothing counted.
         self.assertEqual(AccessEntry.objects.get().already_requested, 0)
@@ -262,8 +271,8 @@ class ProxyViewHostRuleTest(TestCase):
         self.assertEqual(response["X-RateLimit-Remaining"], "99")  # this request counted
 
 
-@patch("middleman.services.requests.get")
-@patch("middleman.services.requests.head")
+@patch("middleman.upstream.get")
+@patch("middleman.upstream.head")
 class ProxyViewStatusCodeTest(TestCase):
     """Each failure maps to one status code; only HTTP is mocked."""
 
@@ -391,7 +400,10 @@ class ProxyViewStatusCodeTest(TestCase):
             self.client.get(self.url, REMOTE_ADDR="10.0.0.7")
             self.client.get(self.url)
 
-        self.assertIn("client matches a blacklist rule | ip=10.0.0.7 path='200/' rule_type=ip rule='10.0.0.0/24'", logs.output[0])
+        self.assertRegex(
+            logs.output[0],
+            r"client matches a blacklist rule \| ref=[0-9a-f]{12} ip=10\.0\.0\.7 path='200/' rule_type=ip rule='10\.0\.0\.0/24'",
+        )
         self.assertIn("rate limit exceeded | ip=127.0.0.1 path='200/' limit=5", logs.output[1])
 
     def test_successful_request_is_logged_once_with_client_and_limits(self, head, get):
@@ -399,7 +411,15 @@ class ProxyViewStatusCodeTest(TestCase):
         get.return_value = FakeUpstreamResponse()
 
         with self.assertLogs("middleman", "INFO") as logs:
-            self.client.get(self.url)
+            response = self.client.get(self.url)
 
-        self.assertEqual(len(logs.records), 1)
-        self.assertIn("[ProxyView] Proxied request | ip=127.0.0.1 path='200/' status=200 limit=100 remaining=99", logs.output[0])
+        # One ProxyView line, plus the separate access log line (middleman.access).
+        by_logger = {}
+        for record in logs.records:
+            by_logger.setdefault(record.name, []).append(record.getMessage())
+        self.assertEqual(sorted(by_logger), ["middleman.access", "middleman.views"])
+        self.assertEqual(len(by_logger["middleman.views"]), 1)
+        self.assertIn("[ProxyView] Proxied request | ip=127.0.0.1 path='200/' status=200 limit=100 remaining=99",
+                      by_logger["middleman.views"][0])
+        self.assertRegex(by_logger["middleman.access"][0], r"^\[Access\] GET '/proxy/200/' 200 \| duration_ms=")
+        self.assertRegex(response["X-Request-ID"], r"^[0-9a-f]{12}$")

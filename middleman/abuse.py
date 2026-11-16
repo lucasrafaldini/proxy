@@ -18,8 +18,8 @@ Signals and why they indicate tampering:
   constant value (corporate forward proxy) scores nothing; every additional
   distinct value in the window does (limit-evasion attempts rotate it).
 * rate_limited_retry: each request answered 429.
-* blacklist_hit: each request blocked by a client (ip/path) rule. Destination
-  (host) blocks are caused by the target's redirects, not the client.
+* blacklist_hit: each request blocked by a client (ip/path/user_agent) rule.
+  Destination (host) blocks are caused by the target's redirects, not the client.
 * auth_failure: invalid, expired or revoked API token.
 * access_denied: management API without credentials or permission.
 * login_failure: failed password login at /admin/login/ (django-axes locks
@@ -195,8 +195,16 @@ def report(ip, signals, now=None) -> None:
         )
         if total >= config["THRESHOLD"]:
             _apply_automatic_policy(ip, total, points, config)
-    except Exception:
-        logger.exception("[AbuseDetector] Failed to record abuse signals | ip=%s signals=%s", ip, signals)
+    except Exception as exc:
+        from django.db import DatabaseError
+
+        if isinstance(exc, DatabaseError):
+            from middleman.diagnostics import log_database_error
+
+            log_database_error(logger, "AbuseDetector", exc, ip=ip, signals=[kind for kind, _ in signals],
+                               fallback="signals not recorded")
+        else:
+            logger.exception("[AbuseDetector] Failed to record abuse signals | ip=%s signals=%s", ip, signals)
 
 
 def hides_rate_limit_headers(ip) -> bool:

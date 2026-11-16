@@ -1,6 +1,8 @@
 import logging
+import secrets
 
 from django.core.exceptions import ValidationError
+from django.db import DatabaseError
 from django.db.models import Count, F, Q
 from django.http import HttpRequest, HttpResponse, StreamingHttpResponse
 from django.shortcuts import render
@@ -14,10 +16,13 @@ from middleman.models import (AccessEntry, AllowedHost, BlacklistRule,
                               ClientPolicy, canonical_ip)
 from middleman.serializers import AccessEntrySerializer
 from middleman.version import LEGACY_VERSION, __version__
-from proxy.settings import BASE_TARGET_URL, BLACKLISTED_IPS, BLACKLISTED_PATHS
+from proxy.settings import (BASE_TARGET_URL, BLACKLISTED_IPS,
+                            BLACKLISTED_PATHS, BLACKLISTED_USER_AGENTS,
+                            BLACKLISTED_USER_AGENTS_RE)
 
 from . import abuse
 from . import hosts
+from . import upstream
 from .auth import (ClientPolicyPermissions, DashboardPermissions,
                    RegistryPermissions, SettingsPermissions)
 from .client_ip import get_client_ip
@@ -30,14 +35,52 @@ from .exceptions import (AccessNotRegisteredException,
                          ExceededRequestsLimitException,
                          ServerNotRespondingException,
                          UpstreamStatusException, UpstreamTimeoutException)
+from .diagnostics import explain_database_error, log_database_error
 from .interfaces import RegistryInterface
+from .observability import current_request_id
+from .rules import HOST_RULE_TYPES, USER_AGENT_RULE_TYPES
 from .services import ProxyManager
+from .user_agents import loggable_user_agent
 
 logger = logging.getLogger(__name__)
 
 
 def _text_response(message: str, status_code: int) -> HttpResponse:
     return HttpResponse(message, status=status_code, content_type="text/plain; charset=utf-8")
+
+
+# Body of every 403 caused by a blacklist rule (client or destination). It
+# never names the rule, its type, the client's data or the destination host:
+# that would hand a scanner the blocklist (and internal host names). Operators
+# find the details in the log line carrying the same reference.
+POLICY_BLOCK_MESSAGE = "Forbidden: the request was blocked by the proxy's access policy (ref {ref})."
+
+
+def _policy_block_response(ref: str) -> HttpResponse:
+    return _text_response(POLICY_BLOCK_MESSAGE.format(ref=ref), status.HTTP_403_FORBIDDEN)
+
+
+def _block_reference() -> str:
+    """
+    The request id (also in X-Request-ID and on every log line of the request),
+    so a reported block leads to all of its log lines. Random, not sequential.
+    Outside RequestContextMiddleware (direct view calls) a fresh random id.
+    """
+    request_id = current_request_id()
+    return request_id if request_id and request_id != "-" else secrets.token_hex(6)
+
+
+def _database_unavailable(component, exc, **context) -> HttpResponse:
+    """503 (database unusable) or 500 (other database error) with a semantic log line."""
+    diagnosis = explain_database_error(exc)
+    log_database_error(logger, component, exc, diagnosis, **context)
+    if diagnosis.unavailable:
+        return _text_response(
+            "Service unavailable: the proxy's database is not reachable (ref {}).".format(_block_reference()),
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return _text_response("Internal proxy error (ref {}).".format(_block_reference()),
+                          status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 def _requester(request) -> str:
@@ -74,11 +117,12 @@ class ProxyView(APIView):
     """
     Proxy view.
 
-    Status codes: upstream status on success; 403 blacklisted client, path or
-    destination; 429 rate limit exceeded; 502 target unreachable, failing its
-    availability check or unverifiable; 504 target timeout; 400 client address
-    unavailable; 500 internal error. 502/504 bodies never include the target
-    URL (it may be internal); the logs do.
+    Status codes: upstream status on success; 403 blacklisted client, path,
+    User-Agent or destination; 429 rate limit exceeded; 502 target unreachable,
+    failing its availability check or unverifiable; 504 target timeout; 400
+    client address unavailable; 500 internal error. 403/502/504 bodies never
+    include the matching rule or the target URL/host (they may be internal or
+    reveal the blocklist); the logs do (403 bodies carry a ref to find the line).
     """
 
     # Public and anonymous: an Authorization header sent by a proxy client
@@ -92,19 +136,29 @@ class ProxyView(APIView):
         try:
             response = proxy.access_filter(request, path)
         except BlockedDestinationException as exc:
+            ref = _block_reference()
             logger.warning(
                 "[ProxyView] Request blocked: destination matches a host rule "
-                "| ip=%s path=%r host=%r rule=%r",
-                exc.ip, exc.path, exc.host, exc.rule_value,
+                "| ref=%s ip=%s path=%r host=%r rule=%r",
+                ref, exc.ip, exc.path, exc.host, exc.rule_value,
             )
-            return _text_response(str(exc), status.HTTP_403_FORBIDDEN)
+            return _policy_block_response(ref)
         except BlacklistedAccessException as exc:
-            logger.warning(
-                "[ProxyView] Request blocked: client matches a blacklist rule "
-                "| ip=%s path=%r rule_type=%s rule=%r",
-                exc.ip, exc.path, exc.rule_type, exc.rule_value,
-            )
-            return _text_response(str(exc), status.HTTP_403_FORBIDDEN)
+            ref = _block_reference()
+            if exc.user_agent is not None:
+                # Client-controlled: truncated, and %r so it cannot forge log lines.
+                logger.warning(
+                    "[ProxyView] Request blocked: client matches a blacklist rule "
+                    "| ref=%s ip=%s path=%r rule_type=%s rule=%r user_agent=%r",
+                    ref, exc.ip, exc.path, exc.rule_type, exc.rule_value, loggable_user_agent(exc.user_agent),
+                )
+            else:
+                logger.warning(
+                    "[ProxyView] Request blocked: client matches a blacklist rule "
+                    "| ref=%s ip=%s path=%r rule_type=%s rule=%r",
+                    ref, exc.ip, exc.path, exc.rule_type, exc.rule_value,
+                )
+            return _policy_block_response(ref)
         except ExceededRequestsLimitException as exc:
             logger.warning(
                 "[ProxyView] Request rejected: rate limit exceeded | ip=%s path=%r limit=%s",
@@ -141,12 +195,17 @@ class ProxyView(APIView):
                 "Bad request: the client address could not be determined.",
                 status.HTTP_400_BAD_REQUEST,
             )
-        except AccessNotRegisteredException:
+        except AccessNotRegisteredException as exc:
+            if isinstance(exc.__cause__, DatabaseError):
+                return _database_unavailable("ProxyView", exc.__cause__, ip=proxy.client_ip, path=path)
             # Logged with traceback by ProxyManager.access_filter.
             return _text_response(
                 "Internal proxy error: the request could not be registered.",
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        except DatabaseError as exc:
+            # Rules, client policies... cannot be read: fail closed, never proxy unchecked.
+            return _database_unavailable("ProxyView", exc, ip=proxy.client_ip, path=path)
         except Exception:
             logger.exception("[ProxyView] Unexpected error while proxying | path=%r", path)
             return _text_response("Internal proxy error.", status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -158,7 +217,8 @@ class ProxyView(APIView):
             rate_limit.get("limit"), rate_limit.get("remaining"),
         )
         streaming_response = StreamingHttpResponse(
-            response.raw,
+            # Releases the connection to the keep-alive pool once fully sent.
+            upstream.stream_body(response),
             content_type=response.headers.get("content-type"),
             status=response.status_code,
             reason=response.reason,
@@ -202,7 +262,10 @@ class DashboardView(ManagementAPIView):
         perms_ui = self._ui_permissions(request.user)
         entries = AccessEntry.objects.all().order_by("-created_at")
         rules = BlacklistRule.objects.all().order_by("rule_type", "value")
-        policy_rule_count = len(BLACKLISTED_IPS) + len(BLACKLISTED_PATHS) + rules.count()
+        setting_user_agent_rules = len(BLACKLISTED_USER_AGENTS) + len(BLACKLISTED_USER_AGENTS_RE)
+        policy_rule_count = (
+            len(BLACKLISTED_IPS) + len(BLACKLISTED_PATHS) + setting_user_agent_rules + rules.count()
+        )
         blocked_entries = entries.filter(Q(already_requested__gte=F("max_requests"))).count()
         top_paths = list(
             entries.values("path")
@@ -278,10 +341,11 @@ class DashboardView(ManagementAPIView):
             {
                 "title": "Policy rules",
                 "value": "{} rules".format(policy_rule_count),
-                "hint": "{} IP rules · {} path rules · {} host rules · {} invalid".format(
+                "hint": "{} IP rules · {} path rules · {} host rules · {} user-agent rules · {} invalid".format(
                     len(BLACKLISTED_IPS) + rules.filter(rule_type="ip").count(),
                     len(BLACKLISTED_PATHS) + rules.filter(rule_type="path").count(),
-                    rules.filter(rule_type__in=["host", "host_re"]).count(),
+                    rules.filter(rule_type__in=HOST_RULE_TYPES).count(),
+                    setting_user_agent_rules + rules.filter(rule_type__in=USER_AGENT_RULE_TYPES).count(),
                     sum(1 for rule in rule_rows if rule.invalid),
                 ),
             },
@@ -298,6 +362,7 @@ class DashboardView(ManagementAPIView):
                 "incident_summary": incident_summary,
                 "threat_paths": threat_paths,
                 "rules": rule_rows,
+                "rule_types": BlacklistRule.RuleType.choices,
                 "rule_error": rule_error,
                 "perms_ui": perms_ui,
                 "proxy_version": __version__,

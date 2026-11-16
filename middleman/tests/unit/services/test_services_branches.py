@@ -37,8 +37,8 @@ class TestProxyManagerBranches:
         assert self.proxy_manager._matches_rule("admin/index", "admin/index") is True
         assert self.proxy_manager._matches_rule("admin/index", "ops/*") is False
 
-    @patch("middleman.services.requests.get")
-    @patch("middleman.services.requests.head")
+    @patch("middleman.upstream.get")
+    @patch("middleman.upstream.head")
     def test_do_request_success(self, mock_head, mock_get):
         mock_head.return_value = Mock(status_code=200)
         mock_get.return_value = Mock(status_code=200)
@@ -49,7 +49,7 @@ class TestProxyManagerBranches:
         mock_head.assert_called_once()
         mock_get.assert_called_once()
 
-    @patch("middleman.services.requests.head")
+    @patch("middleman.upstream.head")
     def test_do_request_non_200_raises_upstream_status(self, mock_head):
         # Used to return None, which crashed the view with an AttributeError.
         mock_head.return_value = Mock(status_code=503)
@@ -57,12 +57,12 @@ class TestProxyManagerBranches:
             self.proxy_manager.do_request()
         assert exc_info.value.status_code == 503
 
-    @patch("middleman.services.requests.head", side_effect=requests.ConnectionError("refused"))
+    @patch("middleman.upstream.head", side_effect=requests.ConnectionError("refused"))
     def test_do_request_raises_not_responding(self, _mock_head):
         with pytest.raises(ServerNotRespondingException):
             self.proxy_manager.do_request()
 
-    @patch("middleman.services.requests.head", side_effect=KeyError("bug"))
+    @patch("middleman.upstream.head", side_effect=KeyError("bug"))
     def test_do_request_does_not_disguise_programming_errors(self, _mock_head):
         # Only network errors mean "target not responding"; bugs must surface (500).
         with pytest.raises(KeyError):

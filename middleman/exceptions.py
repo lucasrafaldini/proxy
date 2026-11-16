@@ -47,11 +47,13 @@ class BlacklistedAccessException(Exception):
     Exception raised when the request matches a blacklist rule.
     """
 
-    def __init__(self, ip, path, rule_type, rule_value):
+    def __init__(self, ip, path, rule_type, rule_value, user_agent=None):
         self.ip = ip
         self.path = path
         self.rule_type = rule_type
         self.rule_value = rule_value
+        # The client's User-Agent, set only when a User-Agent rule matched.
+        self.user_agent = user_agent
 
     def __str__(self):
         return "Access from {} to {} blocked by {} rule: {}".format(

@@ -560,15 +560,14 @@
           <div class="field">
             <label for="rule_type">Rule type</label>
             <select id="rule_type" name="rule_type">
-              <option value="ip">IP</option>
-              <option value="path">Path</option>
-              <option value="host">Host (site)</option>
-              <option value="host_re">Host (regex)</option>
+              {% for type_value, type_label in rule_types %}
+              <option value="{{ type_value }}">{{ type_label }}</option>
+              {% endfor %}
             </select>
           </div>
           <div class="field">
             <label for="value">Value</label>
-            <input id="value" name="value" placeholder="10.0.0.0/24, admin/* ou example.com" required>
+            <input id="value" name="value" placeholder="10.0.0.0/24, admin/*, example.com ou sqlmap" required>
           </div>
           {% if rule_error %}
             <div class="footer-note" role="alert">Regra inválida: {{ rule_error }}</div>
@@ -582,6 +581,9 @@
           Host bloqueia um site de destino: example.com (só esse host), *.example.com (subdomínios)
           ou um IP/CIDR de destino (pode atingir outros sites no mesmo IP).
           Host (regex) usa sintaxe RE2 sobre o host inteiro, com pontos escapados: (www\.)?example\.com.
+          User-Agent bloqueia clientes cujo User-Agent contém o texto (sem diferenciar maiúsculas): sqlmap, python-requests/.
+          User-Agent (regex) usa RE2 e procura em qualquer parte do User-Agent: sqlmap|nikto; ^$ bloqueia User-Agent ausente.
+          O User-Agent é informado pelo cliente: use junto com regras de IP, não no lugar delas.
         </div>
       </article>
       {% endif %}

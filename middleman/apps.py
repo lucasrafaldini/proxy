@@ -99,3 +99,16 @@ class MiddlemanConfig(AppConfig):
         user_locked_out.connect(report_lockout, dispatch_uid="middleman_lockout")
         post_save.connect(invalidate_cache, sender="middleman.AllowedHost", dispatch_uid="allowed_host_saved")
         post_delete.connect(invalidate_cache, sender="middleman.AllowedHost", dispatch_uid="allowed_host_deleted")
+        # Request ids in log lines end when the response is closed (middleman/observability.py).
+        from django.core.signals import request_finished, request_started
+
+        from middleman.observability import begin_request, clear_request_id
+
+        # Before any middleware runs, so even AllowedHostsMiddleware's lines carry the id.
+        request_started.connect(begin_request, dispatch_uid="middleman_begin_request")
+        request_finished.connect(clear_request_id, dispatch_uid="middleman_clear_request_id")
+        # Compiled blacklist rules (middleman/ruleset.py): publish a new version on every change.
+        from middleman.ruleset import bump_version
+
+        post_save.connect(bump_version, sender="middleman.BlacklistRule", dispatch_uid="blacklist_rule_saved")
+        post_delete.connect(bump_version, sender="middleman.BlacklistRule", dispatch_uid="blacklist_rule_deleted")

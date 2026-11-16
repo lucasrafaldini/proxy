@@ -50,8 +50,8 @@ FORGERIES = {
 }
 
 
-@patch("middleman.services.requests.get", side_effect=lambda *a, **k: upstream_response())
-@patch("middleman.services.requests.head", side_effect=lambda *a, **k: upstream_response())
+@patch("middleman.upstream.get", side_effect=lambda *a, **k: upstream_response())
+@patch("middleman.upstream.head", side_effect=lambda *a, **k: upstream_response())
 class ForgedRequestHeadersTest(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -135,8 +135,8 @@ class ForgedRequestHeadersTest(TestCase):
 
 
 @override_settings(TRUSTED_PROXIES=["10.0.0.2"])
-@patch("middleman.services.requests.get", side_effect=lambda *a, **k: upstream_response())
-@patch("middleman.services.requests.head", side_effect=lambda *a, **k: upstream_response())
+@patch("middleman.upstream.get", side_effect=lambda *a, **k: upstream_response())
+@patch("middleman.upstream.head", side_effect=lambda *a, **k: upstream_response())
 class BehindTrustedProxyTest(TestCase):
     """Behind a load balancer, the client controls only the left part of X-Forwarded-For."""
 
@@ -174,8 +174,8 @@ class RaceConditionTest(TestCase):
                     inner_statuses.append(self.client.get(URL, REMOTE_ADDR=PEER).status_code)
             return upstream_response()
 
-        with patch("middleman.services.requests.head", side_effect=lambda *a, **k: upstream_response()):
-            with patch("middleman.services.requests.get", side_effect=upstream_get):
+        with patch("middleman.upstream.head", side_effect=lambda *a, **k: upstream_response()):
+            with patch("middleman.upstream.get", side_effect=upstream_get):
                 outer = self.client.get(URL, REMOTE_ADDR=PEER)
 
         self.assertEqual(outer.status_code, 200)
@@ -193,8 +193,8 @@ class RaceConditionTest(TestCase):
                 statuses.append(self.client.get(URL, REMOTE_ADDR=PEER).status_code)
             return upstream_response()
 
-        with patch("middleman.services.requests.head", side_effect=lambda *a, **k: upstream_response()):
-            with patch("middleman.services.requests.get", side_effect=upstream_get):
+        with patch("middleman.upstream.head", side_effect=lambda *a, **k: upstream_response()):
+            with patch("middleman.upstream.get", side_effect=upstream_get):
                 self.client.get(URL, REMOTE_ADDR=PEER)
 
         self.assertEqual(statuses, [200])
@@ -204,7 +204,7 @@ class RaceConditionTest(TestCase):
         import requests
 
         entry = AccessEntry.objects.create(key=self.key, ip=PEER, path="home/", already_requested=4, max_requests=5)
-        with patch("middleman.services.requests.head", side_effect=requests.ConnectionError("down")):
+        with patch("middleman.upstream.head", side_effect=requests.ConnectionError("down")):
             with self.assertLogs("middleman.services", "ERROR"):
                 self.assertEqual(self.client.get(URL, REMOTE_ADDR=PEER).status_code, 502)
         entry.refresh_from_db()
@@ -220,7 +220,7 @@ class RaceConditionTest(TestCase):
             AccessEntry.objects.filter(pk=entry.pk).update(already_requested=0)
             raise requests.ConnectionError("down")
 
-        with patch("middleman.services.requests.head", side_effect=head):
+        with patch("middleman.upstream.head", side_effect=head):
             with self.assertLogs("middleman.services", "ERROR"):
                 self.client.get(URL, REMOTE_ADDR=PEER)
         entry.refresh_from_db()
@@ -231,8 +231,8 @@ class HeaderIsolationTest(TestCase):
     """Nothing the client sends goes to the target; nothing the target sends leaks back."""
 
     def test_client_headers_and_cookies_are_not_forwarded_to_the_target(self):
-        with patch("middleman.services.requests.head", return_value=upstream_response()) as head:
-            with patch("middleman.services.requests.get", return_value=upstream_response()) as get:
+        with patch("middleman.upstream.head", return_value=upstream_response()) as head:
+            with patch("middleman.upstream.get", return_value=upstream_response()) as get:
                 APIClient().get(URL, REMOTE_ADDR=PEER, HTTP_COOKIE="session=abc",
                                 HTTP_AUTHORIZATION="Bearer x", HTTP_X_FORWARDED_FOR="1.2.3.4")
         for call in (head.call_args, get.call_args):
@@ -243,8 +243,8 @@ class HeaderIsolationTest(TestCase):
             "X-RateLimit-Remaining": "9999", "X-RateLimit-Limit": "9999", "Set-Cookie": "admin=1",
             "Server": "secret-internal/1.0", "X-Powered-By": "internal", "Location": "https://evil.example/",
         })
-        with patch("middleman.services.requests.head", return_value=upstream_response()):
-            with patch("middleman.services.requests.get", return_value=hostile):
+        with patch("middleman.upstream.head", return_value=upstream_response()):
+            with patch("middleman.upstream.get", return_value=hostile):
                 response = APIClient().get(URL, REMOTE_ADDR=PEER)
         self.assertEqual(response["X-RateLimit-Remaining"], "99")
         for name in ["Set-Cookie", "Server", "X-Powered-By", "Location"]:

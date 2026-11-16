@@ -7,7 +7,7 @@ data can tell which behaviour produced it (see CHANGELOG.md) and decide whether
 to act on it or accept it as part of an older flow.
 """
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 # Stamped on rows that existed before version tracking was introduced (2.0.0).
 # Such rows may have been created without validation and, for access entries,

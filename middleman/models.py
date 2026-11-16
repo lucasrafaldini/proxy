@@ -62,6 +62,9 @@ class BlacklistRule(models.Model):
         # Where the proxy would connect (see middleman/destinations.py):
         HOST = "host", "Host (site)"
         HOST_RE = "host_re", "Host (regex)"
+        # What the client says it is (User-Agent header, see middleman/user_agents.py):
+        USER_AGENT = "user_agent", "User-Agent"
+        USER_AGENT_RE = "user_agent_re", "User-Agent (regex)"
 
     class Meta:
         app_label = "middleman"
@@ -73,7 +76,9 @@ class BlacklistRule(models.Model):
             )
         ]
 
-    rule_type = models.CharField(max_length=8, choices=RuleType.choices)
+    # Must fit the longest RuleType value ("user_agent_re"). SQLite ignores
+    # the length, Postgres does not: a too-short column only fails in production.
+    rule_type = models.CharField(max_length=16, choices=RuleType.choices)
     value = models.CharField(max_length=255)
     enabled = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -96,7 +101,7 @@ class BlacklistRule(models.Model):
         return self.created_by_version == LEGACY_VERSION
 
     def parse(self):
-        """Validate the rule; returns the parsed host rule (or None). Raises InvalidRuleError."""
+        """Validate the rule; returns the parsed host/User-Agent rule (or None). Raises InvalidRuleError."""
         return validate_rule(self.rule_type, self.value)
 
     @property
@@ -267,3 +272,23 @@ class AllowedHost(models.Model):
 
         self.host = normalize_allowed_host(self.host)
         super().save(*args, **kwargs)
+
+
+class RuleSetVersion(models.Model):
+    """
+    Version token of a rule set (one row per set; currently only "blacklist").
+    Every change to a BlacklistRule writes a new random token, so every process
+    knows with one primary-key lookup whether its compiled rules are stale
+    (see middleman/ruleset.py). Not meant to be edited by hand.
+    """
+
+    class Meta:
+        app_label = "middleman"
+        db_table = "middleman_ruleset_version"
+
+    name = models.CharField(max_length=32, primary_key=True)
+    token = models.CharField(max_length=32)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return "{}@{}".format(self.name, self.token)

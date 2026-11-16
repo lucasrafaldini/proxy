@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -9,16 +10,37 @@ from middleman.hosts import parse_baseline
 from middleman.version import __version__ as PROXY_VERSION
 
 
-def _env_flag(name):
-    """Strict boolean environment flag: unset/empty is False; anything unrecognised stops startup."""
+def _env_flag(name, default=False):
+    """Strict boolean environment flag: unset/empty is ``default``; anything unrecognised stops startup."""
     raw = os.getenv(name, "").strip().lower()
-    if raw in ("", "0", "false", "no", "off"):
+    if raw == "":
+        return default
+    if raw in ("0", "false", "no", "off"):
         return False
     if raw in ("1", "true", "yes", "on"):
         return True
     raise ImproperlyConfigured(
         "{}={!r} is not a boolean; use true/false (or 1/0, yes/no, on/off).".format(name, os.getenv(name))
     )
+
+def _env_json_string_list(name):
+    """
+    A JSON array of strings from the environment (unset/empty is []). Used where
+    values may contain commas, such as User-Agents. Anything else stops startup.
+    """
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    try:
+        value = json.loads(raw)
+    except ValueError:
+        value = None
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ImproperlyConfigured(
+            '{} must be a JSON array of strings, e.g. ["sqlmap", "python-requests/"] '
+            "(JSON, not comma-separated: User-Agents contain commas); got {!r}.".format(name, raw)
+        )
+    return [item.strip() for item in value if item.strip()]
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -44,22 +66,55 @@ if LOGLEVEL not in _LOG_LEVELS:
         "LOGLEVEL={!r} is not valid; use one of {}.".format(LOGLEVEL, ", ".join(_LOG_LEVELS))
     )
 
-# Every line says which proxy version produced it (see CHANGELOG.md).
+# Log output format: "text" (default, for people) or "json" (one object per
+# line, for log pipelines). See middleman/observability.py.
+LOG_FORMAT = os.environ.get("LOG_FORMAT", "text").strip().lower()
+if LOG_FORMAT not in ("text", "json"):
+    raise ImproperlyConfigured("LOG_FORMAT={!r} is not valid; use text or json.".format(os.environ.get("LOG_FORMAT")))
+
+
+def _env_positive_int(name, default):
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value < 1:
+        raise ImproperlyConfigured("{}={!r} must be a positive integer.".format(name, raw))
+    return value
+
+
+# Requests slower than this are logged at WARNING by the access log.
+LOG_SLOW_REQUEST_MS = _env_positive_int("LOG_SLOW_REQUEST_MS", 2000)
+
+# Every line says which proxy version produced it (see CHANGELOG.md) and which
+# request it belongs to ("-" outside requests), whatever logger wrote it.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
+    "filters": {
+        "request_context": {"()": "middleman.observability.RequestContextFilter"},
+    },
     "formatters": {
         "standard": {
-            "format": "%(asctime)s %(levelname)-8s %(name)s [proxy v{}] %(message)s".format(
+            "format": "%(asctime)s %(levelname)-8s %(name)s [proxy v{}] [req %(request_id)s] %(message)s".format(
                 PROXY_VERSION
             ),
         },
+        "json": {"()": "middleman.observability.JsonFormatter"},
     },
     "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "standard"},
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json" if LOG_FORMAT == "json" else "standard",
+            "filters": ["request_context"],
+        },
     },
     "root": {"handlers": ["console"], "level": "WARNING"},
     "loggers": {
+        # Includes middleman.access (one line per request at INFO; slow ones at WARNING).
         "middleman": {"level": LOGLEVEL},
         # Django's request/server warnings (4xx/5xx) in the same format.
         "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
@@ -81,6 +136,10 @@ ALLOWED_HOSTS = ["*"]  # delegated to AllowedHostsMiddleware; do not change
 
 BASE_TARGET_URL = os.environ.get("BASE_TARGET_URL", "http://localhost:8000/")
 
+# Reuse connections to the target (keep-alive pool per thread; see
+# middleman/upstream.py). false = a new connection per call, as before 2.1.0.
+UPSTREAM_KEEPALIVE = _env_flag("UPSTREAM_KEEPALIVE", default=True)
+
 BLACKLISTED_IPS = [
     item.strip()
     for item in os.getenv("BLACKLISTED_IPS", "").split(",")
@@ -92,6 +151,12 @@ BLACKLISTED_PATHS = [
     for item in os.getenv("BLACKLISTED_PATHS", "").split(",")
     if item.strip()
 ]
+
+# User-Agent rules read at startup, as JSON arrays (see middleman/user_agents.py):
+# substrings (user_agent rules) and RE2 regexes (user_agent_re rules). Invalid
+# entries are skipped and reported, like BLACKLISTED_IPS / BLACKLISTED_PATHS.
+BLACKLISTED_USER_AGENTS = _env_json_string_list("BLACKLISTED_USER_AGENTS")
+BLACKLISTED_USER_AGENTS_RE = _env_json_string_list("BLACKLISTED_USER_AGENTS_RE")
 
 # Reverse proxies / load balancers allowed to set X-Forwarded-For (IPs or
 # CIDRs, comma-separated). Empty = trust nobody: the TCP peer is the client.
@@ -119,6 +184,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     # Must stay first: the only Host header check (see ALLOWED_HOSTS above).
     "middleman.hosts.AllowedHostsMiddleware",
+    # X-Request-ID + access log; the request id itself is assigned before any
+    # middleware (request_started signal). See middleman/observability.py.
+    "middleman.observability.RequestContextMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -182,7 +250,10 @@ DATABASES = {
         "NAME": os.getenv("POSTGRES_DB", "db-test"),
         "USER": os.getenv("POSTGRES_USER", "proxy-test"),
         "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
-        "PORT": 5432,
+        "PORT": _env_positive_int("POSTGRES_PORT", 5432),
+        # Fail (with an explanation) instead of hanging for the OS TCP timeout
+        # (often ~2 minutes) when the host drops packets.
+        "OPTIONS": {"connect_timeout": _env_positive_int("POSTGRES_CONNECT_TIMEOUT", 10)},
     }
 }
 

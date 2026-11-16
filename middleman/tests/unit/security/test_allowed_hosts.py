@@ -66,7 +66,9 @@ class NormalizeAllowedHostTest(SimpleTestCase):
         self.assertEqual(settings.MIDDLEWARE[0], hosts.MIDDLEWARE_PATH)
         self.assertFalse(getattr(settings, "USE_X_FORWARDED_HOST", False))
         hosts.check_middleware_order(settings.MIDDLEWARE)
-        for broken in ([], settings.MIDDLEWARE[1:], settings.MIDDLEWARE[1:] + [hosts.MIDDLEWARE_PATH]):
+        for broken in ([], settings.MIDDLEWARE[1:], settings.MIDDLEWARE[1:] + [hosts.MIDDLEWARE_PATH],
+                       # Not even the request-id middleware may run before the Host check.
+                       [settings.MIDDLEWARE[1], hosts.MIDDLEWARE_PATH] + settings.MIDDLEWARE[2:]):
             with self.assertRaises(ImproperlyConfigured):
                 hosts.check_middleware_order(broken)
 

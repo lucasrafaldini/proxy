@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 from middleman.models import BlacklistRule
 from middleman.tests.utils.auth import logged_in_client
+from middleman.tests.utils.blocks import assert_policy_block
 
 
 class BlacklistViewsTest(TestCase):
@@ -151,8 +152,8 @@ class BlacklistViewsTest(TestCase):
         self.assertIn("/admin/login/", response["Location"])
 
 
-@patch("middleman.services.requests.get")
-@patch("middleman.services.requests.head")
+@patch("middleman.upstream.get")
+@patch("middleman.upstream.head")
 class CidrBlacklistForbiddenTest(TestCase):
     """A CIDR rule created on the dashboard blocks every client IP inside the subnet with 403."""
 
@@ -171,12 +172,12 @@ class CidrBlacklistForbiddenTest(TestCase):
     def test_ip_inside_the_blocked_cidr_gets_403_forbidden(self, head, get):
         self.assertTrue(BlacklistRule.objects.filter(rule_type="ip", value="10.0.0.0/24", enabled=True).exists())
 
-        with self.assertLogs("middleman.views", "WARNING"):
+        with self.assertLogs("middleman.views", "WARNING") as logs:
             response = self.proxy_client.get(self.url, REMOTE_ADDR="10.0.0.5")
 
-        self.assertEqual(response.status_code, 403)
         self.assertEqual(response.reason_phrase, "Forbidden")
-        self.assertEqual(response.content, b"Access from 10.0.0.5 to home/ blocked by ip rule: 10.0.0.0/24")
+        assert_policy_block(self, response, logs.output, hidden=["10.0.0.0/24", "10.0.0.5", "home/", "ip rule"])
+        self.assertIn("rule_type=ip rule='10.0.0.0/24'", logs.output[0])  # details stay in the log
         head.assert_not_called()  # the target is never contacted
         get.assert_not_called()
 
