@@ -123,7 +123,7 @@ test-interfaces: ## Registry data-access layer
 test-core: ## Settings/startup, versioning, migrations, exceptions, logging, diagnostics, doctor
 	$(RUN_TESTS) $(wildcard $(UNIT)/test_*.py) $(NO_COV) $(ARGS)
 
-test-acceptance: ## Definition-of-done criteria of the release (User-Agent filtering)
+test-acceptance: ## Release acceptance tests (User-Agent filtering)
 	$(RUN_TESTS) middleman/tests/acceptance $(NO_COV) -v $(ARGS)
 
 test-functional: ## End-to-end over real HTTP: live server + real upstream

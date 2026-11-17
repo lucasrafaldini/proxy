@@ -1,15 +1,5 @@
 """
-Definition of done for 2.1.0 (User-Agent filtering), one class per criterion.
-
-1. The whole suite passes with coverage >= 80%: `make test` (this file is part of it).
-2. A BlacklistRule targeting a User-Agent, created through the model or the
-   API, blocks matching requests to /proxy/<path>/ with 403 and lets
-   non-matching User-Agents through.
-3. Missing or empty User-Agent headers are handled safely: no unhandled
-   exception, no 500, whatever rules exist.
-4. `python manage.py check_blacklist_rules` validates User-Agent rules cleanly.
-
-Run only these: `make test-acceptance`.
+Release acceptance tests for User-Agent blacklist rules (`make test-acceptance`).
 """
 
 import io
@@ -49,7 +39,7 @@ def upstream_response(*args, **kwargs):
 
 @patch("middleman.upstream.get", side_effect=upstream_response)
 @patch("middleman.upstream.head", side_effect=upstream_response)
-class Criterion2UserAgentRuleBlocksProxyRequestsTest(TestCase):
+class UserAgentRuleBlocksProxyRequestsTest(TestCase):
     """A User-Agent rule created via the model or the API blocks matches with 403 and lets others through."""
 
     def setUp(self):
@@ -74,14 +64,14 @@ class Criterion2UserAgentRuleBlocksProxyRequestsTest(TestCase):
         for path in PATHS:
             with self.subTest(path=path):
                 self.assert_blocked(path, SQLMAP)
-                self.assert_blocked(path, "Mozilla/5.0 (compatible; SQLMap)")  # case-insensitive, anywhere
+                self.assert_blocked(path, "Mozilla/5.0 (compatible; SQLMap)")
                 self.assert_allowed(path, FIREFOX)
 
     def test_regex_rule_created_through_the_model(self, head, get):
         BlacklistRule.objects.create(rule_type="user_agent_re", value=r"nikto|^python-requests/")
         self.assert_blocked("home", "Mozilla/5.00 (Nikto/2.5.0)")
         self.assert_blocked("home", "python-requests/2.31.0")
-        self.assert_allowed("home", "my-app/1.0 python-requests/2.31.0")  # anchored: not at the start
+        self.assert_allowed("home", "my-app/1.0 python-requests/2.31.0")
         self.assert_allowed("home", FIREFOX)
 
     def test_rule_created_through_the_api(self, head, get):
@@ -91,7 +81,6 @@ class Criterion2UserAgentRuleBlocksProxyRequestsTest(TestCase):
         rule = BlacklistRule.objects.get(rule_type="user_agent", value="python-requests/")
         self.assert_blocked("home", "python-requests/2.31.0")
         self.assert_allowed("home", FIREFOX)
-        # Disabled through the API: the same client goes through again.
         operator.post("/", {"action": "toggle", "rule_id": rule.pk})
         self.assert_allowed("home", "python-requests/2.31.0")
 
@@ -112,7 +101,7 @@ class Criterion2UserAgentRuleBlocksProxyRequestsTest(TestCase):
 
 @patch("middleman.upstream.get", side_effect=upstream_response)
 @patch("middleman.upstream.head", side_effect=upstream_response)
-class Criterion3MissingOrEmptyUserAgentTest(TestCase):
+class MissingOrEmptyUserAgentTest(TestCase):
     """No User-Agent, an empty one or blanks: never an unhandled exception or a 500, with any rules."""
 
     RULE_SETS = {
@@ -126,8 +115,6 @@ class Criterion3MissingOrEmptyUserAgentTest(TestCase):
     USER_AGENTS = {"missing": None, "empty": "", "blank": "   "}
 
     def request(self, user_agent):
-        # APIClient raises any unhandled exception from the view: reaching the
-        # assertion proves none happened.
         headers = {} if user_agent is None else {"HTTP_USER_AGENT": user_agent}
         return APIClient().get("/proxy/home/", REMOTE_ADDR="198.51.100.11", **headers)
 
@@ -162,7 +149,7 @@ class Criterion3MissingOrEmptyUserAgentTest(TestCase):
         self.assertEqual(manager._is_blacklisted("198.51.100.11", "home/", ""), ("user_agent_re", "^$"))
 
 
-class Criterion4CheckBlacklistRulesTest(TestCase):
+class CheckBlacklistRulesUserAgentTest(TestCase):
     """check_blacklist_rules validates User-Agent rules (database and startup settings)."""
 
     def run_command(self, *args):
@@ -214,8 +201,8 @@ class Criterion4CheckBlacklistRulesTest(TestCase):
         self.assertIn("setting=BLACKLISTED_USER_AGENTS_RE value='(x' reason=regex_syntax", out.getvalue())
 
 
-class Criterion4ManagePyCommandTest(TestCase):
-    """The literal `python manage.py check_blacklist_rules`, against a migrated database."""
+class ManagePyCheckBlacklistRulesTest(TestCase):
+    """CLI invocation of `python manage.py check_blacklist_rules` against a migrated database."""
 
     SCRIPT = textwrap.dedent("""
         import django
@@ -229,14 +216,14 @@ class Criterion4ManagePyCommandTest(TestCase):
 
     def manage(self, tmp, *args, code=None):
         env = {k: v for k, v in os.environ.items() if not k.startswith(("BLACKLISTED_", "DJANGO_"))}
-        env.update(DJANGO_SETTINGS_MODULE="dod_settings", PYTHONPATH=os.pathsep.join([tmp, str(settings.BASE_DIR)]),
+        env.update(DJANGO_SETTINGS_MODULE="temp_settings", PYTHONPATH=os.pathsep.join([tmp, str(settings.BASE_DIR)]),
                    PYTHONDONTWRITEBYTECODE="1")
         command = [sys.executable, "-c", code] if code else [sys.executable, "manage.py", *args]
         return subprocess.run(command, cwd=settings.BASE_DIR, env=env, capture_output=True, text=True, timeout=120)
 
     def test_manage_py_check_blacklist_rules(self):
         with tempfile.TemporaryDirectory() as tmp:
-            Path(tmp, "dod_settings.py").write_text(
+            Path(tmp, "temp_settings.py").write_text(
                 "from proxy.test_settings import *  # noqa\n"
                 "DATABASES = {{'default': {{'ENGINE': 'django.db.backends.sqlite3', 'NAME': {!r}}}}}\n".format(
                     str(Path(tmp, "db.sqlite3")))

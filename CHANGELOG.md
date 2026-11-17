@@ -89,12 +89,12 @@ numbered as a minor version.
   10 s; connecting to an unreachable host no longer hangs for minutes).
 - `make migrate`, `make run`, `make doctor`, `make check-rules` load `.env`
   automatically (`ENV_FILE=...` to use another file).
-- **Acceptance tests for the definition of done** (`middleman/tests/acceptance/`,
-  `make test-acceptance`): one test class per criterion - User-Agent rules
+- **Release acceptance tests** (`middleman/tests/acceptance/`,
+  `make test-acceptance`): User-Agent rules
   created via the model or the API block matches with `403` and let others
   through; missing, empty or blank User-Agents never raise or answer `500`;
   `python manage.py check_blacklist_rules` validates User-Agent rules (run
-  literally against a migrated database).
+  against a migrated database).
 - Direct `pytest` runs keep pytest's cache, coverage data and benchmark
   storage in `.venv` too (`pytest.ini`, `.coveragerc`).
 - Every benchmark run ends with a **decisions table**: each design decision

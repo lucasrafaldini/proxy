@@ -18,7 +18,7 @@ MiddleMan is a rate-limiting, policy-enforcing HTTP proxy built with Django, Dja
    - [Highlights](#highlights)
    - [Breaking changes](#breaking-changes)
    - [Upgrading from 2.0.0](#upgrading-from-200)
-   - [Definition of done](#definition-of-done)
+   - [Release verification](#release-verification)
 3. [Quick start](#3-quick-start)
 4. [Configuration reference](#4-configuration-reference)
 5. [Endpoints](#5-endpoints)
@@ -52,8 +52,7 @@ MiddleMan is a rate-limiting, policy-enforcing HTTP proxy built with Django, Dja
     - [Security checks](#security-checks)
     - [Formatting](#formatting)
 11. [Contributing](#11-contributing)
-12. [TO-DO's](#12-to-dos)
-13. [License](#13-license)
+12. [License](#12-license)
 
 ---
 
@@ -120,9 +119,8 @@ Blocked (`403`), limited (`429`) and failed (`5xx`) requests never count against
 | `manage.py` | Django commands; failures are explained instead of dumped. |
 | `scripts/run_tests.sh` | Single entry point for the test suite (prepares `.venv`, runs pytest isolated). |
 | `scripts/check_hygiene.sh`, `scripts/housekeeping.py` | Storage-hygiene verification; pruning of saved benchmarks. |
-| `scripts/make_submission_zip.sh` | Zip of the project without generated files. |
 | `middleman/tests/unit/` | Unit tests: `services/`, `views/`, `security/`, `interfaces/` and core tests (settings, versioning, migrations, logging, diagnostics). |
-| `middleman/tests/acceptance/` | Definition-of-done criteria of the current release. |
+| `middleman/tests/acceptance/` | Release acceptance tests for User-Agent rules. |
 | `middleman/tests/functional/` | End to end over real HTTP (live server + real upstream, nothing mocked). |
 | `middleman/tests/benchmarks/` | `bench_*.py` (pytest-benchmark; not part of the test suite). |
 
@@ -138,7 +136,7 @@ The full list is in [CHANGELOG.md](./CHANGELOG.md#210---2026-11-16); this is the
 - **Compiled blacklist rules**: validated and compiled once per change instead of on every request, still applied on the very next request in every process (7x-58x faster with 100-2000 rules).
 - **Keep-alive connections to the target**: one connection instead of a new one per `HEAD` and `GET`.
 - **Observability**: a request id on every log line and response, an access log, JSON logs, and database/configuration errors explained in plain language (`make migrate` included), `make doctor`.
-- **Tooling**: `make` targets for every task (all verified), benchmarks with a decisions table, storage hygiene (`make check-hygiene`), acceptance tests for the definition of done.
+- **Tooling**: `make` targets for every task (all verified), benchmarks with a decisions table, storage hygiene (`make check-hygiene`), release acceptance tests.
 
 ### Breaking changes
 
@@ -160,24 +158,9 @@ The full list is in [CHANGELOG.md](./CHANGELOG.md#210---2026-11-16); this is the
 
 Rolling back is covered in [Versions, upgrades and rollback](#9-versions-upgrades-and-rollback).
 
-### Definition of done
+### Release verification
 
-The release is done when, from the `proxy` directory, **`./scripts/run_tests.sh`** (or `pytest --ds=proxy.test_settings` in the activated virtualenv, or `make test`) meets every criterion:
-
-| # | Criterion | Verified by | Result |
-| - | --------- | ----------- | ------ |
-| 1 | All 396 existing tests plus the new tests pass with 0 failures or errors; total coverage ≥ 80% | the three commands above | **611 passed** (396 existing + 215 new), 0 failures, 0 errors, 0 skipped; coverage **97.28%** |
-| 2 | A `BlacklistRule` targeting a User-Agent, created via the model or the API, blocks matching requests to `/proxy/<path>/` with `403` and lets non-matching User-Agents through | `make test-acceptance` (`Criterion2…`), plus `test_user_agent_views.py`, `test_user_agent_security.py`, functional tests | passed |
-| 3 | Missing or empty `User-Agent` headers are handled safely, without unhandled exceptions | `make test-acceptance` (`Criterion3…`: every rule set × missing / empty / blank header, no `ERROR` log, no `500`) | passed |
-| 4 | `python manage.py check_blacklist_rules` validates User-Agent rules cleanly | `make test-acceptance` (`Criterion4…`, including the literal `python manage.py check_blacklist_rules` on a migrated database) | passed |
-
-About the 396 existing tests: all of them still exist under the same ids and pass; none was deleted or skipped (the suite has no skip/xfail markers). Their changes, exactly:
-
-- seven adapted to intentional, documented changes: four assert the generic `403` body (status `403` unchanged; the rule details are now asserted in the log), one expects the `ref=` field in the block log line, one also checks the new access-log line, and one (middleware order) became stricter;
-- one replaced its mock of `BlacklistRule.objects` with the compiled rule set's seam (`cached_ruleset`), same assertion;
-- about 50 mocks only changed target (`middleman.services.requests.get` → `middleman.upstream.get`), and the tests' fake upstream response gained the `close()` method real responses have.
-
-`make test-acceptance` runs criteria 2-4 alone, in seconds; each criterion is one test class named after it in `middleman/tests/acceptance/test_definition_of_done.py`.
+Run `./scripts/run_tests.sh` (or `make test`) from the `proxy` directory to execute the 611-test unit, security, acceptance and functional suite with the 80% coverage gate (`make test-acceptance` runs `middleman/tests/acceptance/test_user_agent_acceptance.py` in isolation).
 
 ---
 
@@ -596,7 +579,7 @@ Unlike `make test`, a direct run sees your shell variables (an exported `DJANGO_
 | `unit/security/` | Tokens, authorization, admin login, allowed hosts, tampering, abuse detection, User-Agent evasion | `make test-security` |
 | `unit/interfaces/` | Registry data access | `make test-interfaces` |
 | `unit/test_*.py` | Settings/startup, versioning, migrations (incl. rollback), exceptions, logging, diagnostics, `doctor`, housekeeping | `make test-core` |
-| `acceptance/` | Definition of done of the current release | `make test-acceptance` |
+| `acceptance/` | Release acceptance tests for User-Agent rules | `make test-acceptance` |
 | `functional/` | End to end over real HTTP: a live server proxying to a real upstream, nothing mocked | `make test-functional` |
 
 Safety nets: tests can only open connections to loopback (a mock that stops intercepting fails the test instead of reaching the network); per-process caches are reset between tests. Coverage gate: `--cov-fail-under=80` for `middleman` and `proxy` (currently 97%).
@@ -685,16 +668,6 @@ Feel free to contribute, but before you get to work, take a look at the issues t
 2. Code. Before opening a pull request run `make test`, `make migrations-check`, `make security` (or `AUDIT=off` if your network cannot reach PyPI) and, for performance-sensitive changes, `make bench-compare`.
 3. Open a pull request: <a href="https://github.com/lucasrafaldini/proxy/compare/" target="_blank">`https://github.com/lucasrafaldini/proxy/compare/`</a>.
 
-## **12. TO-DO's**
-
-- [ ] Implement a cache system; (done for blacklist rules: compiled once per change, see `middleman/ruleset.py`)
-- [x] Also get UserAgent info and make it a filtering criterium (`user_agent` / `user_agent_re` blacklist rules, 2.1.0);
-- [ ] Add a Postman/Insomnia collection to be available for testing;
-- [ ] Implement a stress test with around 50k requests per second in each endpoint (maybe use [Locust](https://locust.io/));
-- [ ] Add AsyncIO + cache to make 50k requests/s charge possible; (benchmarks: asyncio does not help *within* a request; an async stack would only pay off for the upstream waits)
-- [ ] Implement multithreads and multiprocessing to make 50k requests/s charge possible; (benchmarks: scale with worker processes; threads only help up to a few concurrent clients per process)
-- [x] Reuse upstream connections (keep-alive pool per process, `middleman/upstream.py`, 2.1.0);
-
-## **13. License**
+## **12. License**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](./LICENSE)

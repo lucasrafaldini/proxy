@@ -1,14 +1,50 @@
-# Local environment
+# Virtual environments and local config
 .venv/
+venv/
+env/
+ENV/
 .env
+.env.*
+local_settings.py
 
-# Python / test artifacts
+# Python bytecode, packaging and build artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+node_modules/
+
+# Test, coverage and benchmark artifacts
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
 .coverage
+.coverage.*
+coverage/
 coverage.xml
 htmlcov/
 .benchmarks/
-test_db.sqlite3
+
+# Databases, logs and static output
+*.db
+*.sqlite
 *.sqlite3
+*.sqlite*
+*.log
+media/
+staticfiles/
+
+# Operating system and editor files
+.DS_Store
+._*
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
